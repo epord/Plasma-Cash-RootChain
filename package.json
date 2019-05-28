@@ -1,0 +1,22 @@
+{
+  "name": "plasma-cash-rootchain",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/epord/Plasma-Cash-RootChain.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/epord/Plasma-Cash-RootChain/issues"
+  },
+  "homepage": "https://github.com/epord/Plasma-Cash-RootChain#readme",
+  "dependencies": {
+    "openzeppelin-solidity": "2.2.0"
+  }
+}
