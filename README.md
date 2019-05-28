@@ -8,4 +8,4 @@ You must have downloaded [Truffle](https://truffleframework.com/) and [Ganache](
 
 # Test
 
-You can use [Remix] (https://remix.ethereum.org/) and [Metamask] (https://metamask.io/).
+You can use (Remix) [https://remix.ethereum.org/] and (Metamask) [https://metamask.io/].
