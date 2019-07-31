@@ -50,6 +50,8 @@ contract RootChain is IERC721Receiver {
      */
     event SubmittedBlock(uint256 blockNumber, bytes32 root, uint256 timestamp);
 
+    event Debug(ERC721 message);
+
     /**
      * Event for logging exit starts
      * @param slot The slot of the coin being exited
@@ -830,8 +832,9 @@ contract RootChain is IERC721Receiver {
     // Approve and Deposit function for 2-step deposits without having to approve the token by the validators
     // Requires first to have called `approve` on the specified ERC721 contract
     function depositERC721(uint256 uid, address contractAddress) external {
+        emit Debug(ERC721(contractAddress));
         ERC721(contractAddress).safeTransferFrom(msg.sender, address(this), uid);
-        deposit(msg.sender, contractAddress, uid, 1, Mode.ERC721);
+        //deposit(msg.sender, contractAddress, uid, 1, Mode.ERC721);
     }
 
     /******************** HELPERS ********************/
