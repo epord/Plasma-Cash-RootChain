@@ -9,10 +9,6 @@ pragma solidity ^0.5.2;
 import "openzeppelin-solidity/contracts/token/ERC721/ERC721.sol";
 import "openzeppelin-solidity/contracts/token/ERC721/IERC721Receiver.sol";
 
-// ERC20
-import "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
-import "./ERC20Receiver.sol";
-
 // Lib deps
 import "openzeppelin-solidity/contracts/math/SafeMath.sol";
 import "../Libraries/Transaction/Transaction.sol";
@@ -50,7 +46,7 @@ contract RootChain is IERC721Receiver {
      */
     event SubmittedBlock(uint256 blockNumber, bytes32 root, uint256 timestamp);
 
-    event Debug(ERC721 message);
+    event Debug(address message);
 
     /**
      * Event for logging exit starts
@@ -114,7 +110,7 @@ contract RootChain is IERC721Receiver {
      * Event to log the withdrawal of a coin
      * @param owner The address of the user who withdrew bonds
      * @param slot the slot of the coin that was exited
-     * @param mode The type of coin that is being withdrawn (ERC20/ERC721/ETH)
+     * @param mode The type of coin that is being withdrawn (ERC721) (Extendible in the future)
      * @param contractAddress The contract address where the coin is being withdrawn from
               is same as `from` when withdrawing a ETH coin
      * @param uid The uid of the coin being withdrawn if ERC721, else 0
@@ -156,7 +152,7 @@ contract RootChain is IERC721Receiver {
     }
 
     modifier isTokenApproved(address _address) {
-        require(vmc.allowedTokens(_address));
+        require(vmc.allowedTokens(_address), "Contract address is not approved for deposits");
         _;
     }
 
@@ -203,8 +199,6 @@ contract RootChain is IERC721Receiver {
 
     // tracking of NFTs deposited in each slot
     enum Mode {
-        ETH,
-        ERC20,
         ERC721
     }
     uint64 public numCoins = 0;
@@ -263,8 +257,8 @@ contract RootChain is IERC721Receiver {
     /// @param uid The uid of the ERC721 coin being deposited. This is an
     ///            identifier allocated by the ERC721 token contract; it is not
     ///            related to `slot`. If the coin is ETH or ERC20 the uid is 0
-    /// @param denomination The quantity of a particular coin being deposited
-    /// @param mode The type of coin that is being deposited (ETH/ERC721/ERC20)
+    /// @param denomination The quantity of a particular coin being deposited (1 for ERC721) (Extensible in the future)
+    /// @param mode The type of coin that is being deposited (ERC721)
     function deposit(
         address from,
         address contractAddress,
@@ -484,11 +478,7 @@ contract RootChain is IERC721Receiver {
         // Delete the coin that is being withdrawn
         Coin memory c = coins[slot];
         delete coins[slot];
-        if (c.mode == Mode.ETH) {
-            msg.sender.transfer(denomination);
-        } else if (c.mode == Mode.ERC20) {
-            require(ERC20(c.contractAddress).transfer(msg.sender, denomination), "transfer failed");
-        } else if (c.mode == Mode.ERC721) {
+        if (c.mode == Mode.ERC721) {
             ERC721(c.contractAddress).safeTransferFrom(address(this), msg.sender, uid);
         } else {
             revert("Invalid coin mode");
@@ -808,33 +798,23 @@ contract RootChain is IERC721Receiver {
     }
 
     function() external payable {
-        require(address(this).balance <= MAX_VALUE, "Contract has reached capacity");
-        deposit(msg.sender, msg.sender, 0, msg.value, Mode.ETH);
+        //TODO: Not quite sure about this
+        require(false, "This contract does not receive money");
     }
 
-    bytes4 constant ERC721_RECEIVED = 0xf0b9e5ba;
-    function onERC721Received(address operator, address from, uint256 tokenId, bytes memory data)
-        public
-        isTokenApproved(msg.sender)
-        returns(bytes4)
-    {
+    function onERC721Received(address /*operator*/, address from, uint256 tokenId, bytes memory /*data*/) public isTokenApproved(msg.sender)
+    returns (bytes4)
+     {
+        require(ERC721(msg.sender).ownerOf(tokenId) == address(this), "Token was not transfered correctly");
+        //TODO: Should we allow any contracts? Also is this enough proof of a ERC721 transaction?
         deposit(from, msg.sender, tokenId, 1, Mode.ERC721);
         return this.onERC721Received.selector;
     }
 
     // Approve and Deposit function for 2-step deposits without having to approve the token by the validators
-    // Requires first to have called `approve` on the specified ERC20 contract
-    function depositERC20(uint256 amount, address contractAddress) external {
-        require(ERC20(contractAddress).transferFrom(msg.sender, address(this), amount), "Transfer failed");
-        deposit(msg.sender, contractAddress, 0, amount, Mode.ERC20);
-    }
-
-    // Approve and Deposit function for 2-step deposits without having to approve the token by the validators
     // Requires first to have called `approve` on the specified ERC721 contract
     function depositERC721(uint256 uid, address contractAddress) external {
-        emit Debug(ERC721(contractAddress));
         ERC721(contractAddress).safeTransferFrom(msg.sender, address(this), uid);
-        //deposit(msg.sender, contractAddress, uid, 1, Mode.ERC721);
     }
 
     /******************** HELPERS ********************/
