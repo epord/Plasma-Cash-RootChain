@@ -4,13 +4,13 @@
 
 pragma solidity ^0.5.2;
 
-import "./RLP.sol";
+import "./RLPReader.sol";
 
 
 library Transaction {
 
-    using RLP for bytes;
-    using RLP for RLP.RLPItem;
+    using RLPReader for bytes;
+    using RLPReader for RLPReader.RLPItem;
 
     struct TX {
         uint64 slot;
@@ -21,7 +21,7 @@ library Transaction {
     }
 
     function getTx(bytes memory txBytes) internal pure returns (TX memory) {
-        RLP.RLPItem[] memory rlpTx = txBytes.toRLPItem().toList(4);
+        RLPReader.RLPItem[] memory rlpTx = txBytes.toRlpItem().toList();
         TX memory transaction;
 
         transaction.slot = uint64(rlpTx[0].toUint());
@@ -37,7 +37,7 @@ library Transaction {
     }
 
     function getHash(bytes memory txBytes) internal pure returns (bytes32 hash) {
-        RLP.RLPItem[] memory rlpTx = txBytes.toRLPItem().toList(4);
+        RLPReader.RLPItem[] memory rlpTx = txBytes.toRlpItem().toList();
         uint64 slot = uint64(rlpTx[0].toUint());
         uint256 prevBlock = uint256(rlpTx[1].toUint());
 
@@ -49,7 +49,7 @@ library Transaction {
     }
 
     function getOwner(bytes memory txBytes) internal pure returns (address owner) {
-        RLP.RLPItem[] memory rlpTx = txBytes.toRLPItem().toList(4);
+        RLPReader.RLPItem[] memory rlpTx = txBytes.toRlpItem().toList();
         owner = rlpTx[3].toAddress();
     }
 }

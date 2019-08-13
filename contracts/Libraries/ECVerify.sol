@@ -10,17 +10,29 @@ library ECVerify {
     }
 
     function recover(bytes32 h, bytes memory signature) internal pure returns (address) {
-        require(signature.length == 66, "Signature lenght is invalid");
-        SignatureMode mode = SignatureMode(uint8(signature[0]));
+        // 66 bytes since the first byte is used to determine SignatureMode
+        // 65 bytes or 0x0... EIP712
+        // 0x1... GETH
+        // 0x2... TREZOR
+        require(signature.length == 65 || signature.length == 66, "Signature lenght is invalid");
+        SignatureMode mode;
 
         bytes32 hash = h;
         uint8 v;
         bytes32 r;
         bytes32 s;
+
+        uint8 offset = 1;
+        if(signature.length == 65) {
+            offset = 0;
+            mode = SignatureMode.EIP712;
+        } else {
+            mode = SignatureMode(uint8(signature[0]));
+        }
         assembly {
-            r := mload(add(signature, 33))
-            s := mload(add(signature, 65))
-            v := and(mload(add(signature, 66)), 255)
+            r := mload(add(signature, add(32,offset)))
+            s := mload(add(signature, add(64,offset)))
+            v := and(mload(add(signature, add(65, offset))), 255)
         }
 
         if (mode == SignatureMode.GETH) {

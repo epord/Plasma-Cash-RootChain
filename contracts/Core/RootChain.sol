@@ -147,7 +147,7 @@ contract RootChain is IERC721Receiver {
      * Modifiers
      */
     modifier isValidator() {
-        require(vmc.checkValidator(msg.sender));
+        require(vmc.checkValidator(msg.sender), "Sender is not a Validator");
         _;
     }
 
@@ -157,7 +157,7 @@ contract RootChain is IERC721Receiver {
     }
 
     modifier isBonded() {
-        require(msg.value == BOND_AMOUNT);
+        require(msg.value == BOND_AMOUNT, "Transaction must be accompanied by the BOND AMOUNT");
 
         // Save challenger's bond
         balances[msg.sender].bonded = balances[msg.sender].bonded.add(msg.value);
@@ -165,7 +165,7 @@ contract RootChain is IERC721Receiver {
     }
 
     modifier isState(uint64 slot, State state) {
-        require(coins[slot].state == state, "Wrong state");
+        require(coins[slot].state == state, "Wrong coin state");
         _;
     }
 
@@ -239,7 +239,7 @@ contract RootChain is IERC721Receiver {
         isValidator
     {
         // rounding to next whole `childBlockInterval`
-        require(blockNumber >= currentBlock);
+        require(blockNumber >= currentBlock, "A block less than currentBlock cannot be submitted");
         currentBlock = blockNumber;
 
         childChain[currentBlock] = ChildBlock({
@@ -313,14 +313,20 @@ contract RootChain is IERC721Receiver {
         payable isBonded
         isState(slot, State.NOT_EXITING)
     {
-        require(msg.sender == exitingTxBytes.getOwner());
+        require(msg.sender == exitingTxBytes.getOwner(), "Sender does not match exitingTxBytes owner");
+
         doInclusionChecks(
             prevTxBytes, exitingTxBytes,
             prevTxInclusionProof, exitingTxInclusionProof,
             signature,
             blocks
         );
-        pushExit(slot, prevTxBytes.getOwner(), blocks);
+
+        if (blocks[1] % childBlockInterval != 0) {
+            pushExit(slot, address(0), blocks);
+        } else {
+            pushExit(slot, prevTxBytes.getOwner(), blocks);
+        }
     }
 
     /// @dev Verifies that consecutive two transaction involving the same coin
@@ -346,7 +352,7 @@ contract RootChain is IERC721Receiver {
         private
         view
     {
-        if (blocks[1] % childBlockInterval != 0) {
+    if (blocks[1] % childBlockInterval != 0) {
             checkIncludedAndSigned(
                 exitingTxBytes,
                 exitingTxInclusionProof,
@@ -452,7 +458,7 @@ contract RootChain is IERC721Receiver {
     }
 
     function cancelExit(uint64 slot) public {
-        require(coins[slot].exit.owner == msg.sender, "Unauthorized user");
+        require(coins[slot].exit.owner == msg.sender, "Only coin's owner is allowed to cancel the exit");
         delete coins[slot].exit;
         coins[slot].state = State.NOT_EXITING;
         freeBond(msg.sender);
@@ -569,7 +575,7 @@ contract RootChain is IERC721Receiver {
         Transaction.TX memory txData = txBytes.getTx();
         require(txData.hash.ecverify(signature, challenges[slot][index].owner), "Invalid signature");
         require(txData.slot == slot, "Tx is referencing another slot");
-        require(blockNumber > challenges[slot][index].challengingBlockNumber, "Must be after the chalenge");
+        require(blockNumber > challenges[slot][index].challengingBlockNumber, "BlockNumber must be after the chalenge");
         require(blockNumber <= coins[slot].exit.exitBlock, "Cannot respond with a tx after the exit");
         checkTxIncluded(txData.slot, txData.hash, blockNumber, proof);
     }
@@ -673,7 +679,7 @@ contract RootChain is IERC721Receiver {
     /// @param owner The user claimed to be the true owner of the coin
     function setChallenged(uint64 slot, address owner, uint256 challengingBlockNumber, bytes32 txHash) private {
         // Require that the challenge is in the first half of the challenge window
-        require(block.timestamp <= coins[slot].exit.createdAt + CHALLENGE_WINDOW);
+        require(block.timestamp <= coins[slot].exit.createdAt + CHALLENGE_WINDOW, "Challenge windows is over");
 
         require(!challenges[slot].contains(txHash),
                 "Transaction used for challenge already");
@@ -741,13 +747,13 @@ contract RootChain is IERC721Receiver {
         private
         view
     {
-        require(blocks[0] < blocks[1]);
+        require(blocks[0] < blocks[1], "Block on the first index must be the earlier of the 2 blocks");
 
         Transaction.TX memory exitingTxData = exitingTxBytes.getTx();
         Transaction.TX memory prevTxData = prevTxBytes.getTx();
 
         // Both transactions need to be referring to the same slot
-        require(exitingTxData.slot == prevTxData.slot);
+        require(exitingTxData.slot == prevTxData.slot,"Slot on the ExitingTx does not match that on the prevTx");
 
         // The exiting transaction must be signed by the previous transaciton's owner
         require(exitingTxData.hash.ecverify(signature, prevTxData.owner), "Invalid signature");
@@ -770,7 +776,7 @@ contract RootChain is IERC721Receiver {
 
         if (blockNumber % childBlockInterval != 0) {
             // Check against block root for deposit block numbers
-            require(txHash == root);
+            require(txHash == root, "Transaction hash does not match rootHash");
         } else {
             // Check against merkle tree for all other block numbers
             require(
