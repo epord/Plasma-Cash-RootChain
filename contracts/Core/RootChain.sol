@@ -403,6 +403,7 @@ contract RootChain is IERC721Receiver {
 
         // If an exit is not matured, ignore it
         if ((block.timestamp - coin.exit.createdAt) <= MATURITY_PERIOD)
+            /// TODO time error
             return;
 
         // Check if there are any pending challenges for the coin.
