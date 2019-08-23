@@ -748,7 +748,9 @@ contract RootChain is IERC721Receiver {
         private
         view
     {
-        require(blocks[0] < blocks[1], "Block on the first index must be the earlier of the 2 blocks");
+        if (blocks[1] % childBlockInterval == 0) {
+            require(blocks[0] < blocks[1], "Block on the first index must be the earlier of the 2 blocks");
+        }
 
         Transaction.TX memory exitingTxData = exitingTxBytes.getTx();
         Transaction.TX memory prevTxData = prevTxBytes.getTx();
