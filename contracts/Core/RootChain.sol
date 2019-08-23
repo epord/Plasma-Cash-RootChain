@@ -748,7 +748,7 @@ contract RootChain is IERC721Receiver {
         private
         view
     {
-        if (blocks[1] % childBlockInterval == 0) {
+        if (blocks[0] % childBlockInterval == 0) {
             require(blocks[0] < blocks[1], "Block on the first index must be the earlier of the 2 blocks");
         }
 
