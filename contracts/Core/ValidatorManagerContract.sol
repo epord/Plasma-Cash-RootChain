@@ -28,4 +28,9 @@ contract ValidatorManagerContract is Ownable {
         allowedTokens[_token] = !allowedTokens[_token];
     }
 
+    function setToken(address _token, bool validated) public {
+        require(checkValidator(msg.sender), "not a validator");
+        allowedTokens[_token] = validated;
+    }
+
 }
