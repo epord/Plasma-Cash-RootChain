@@ -394,17 +394,9 @@ contract RootChain is IERC721Receiver {
     /// @dev Finalizes an exit, i.e. puts the exiting coin into the EXITED
     ///      state which will allow it to be withdrawn, provided the exit has
     ///      matured and has not been successfully challenged
-    function finalizeExit(uint64 slot) public {
+    function finalizeExit(uint64 slot) isState(slot, State.EXITING) public {
         Coin storage coin = coins[slot];
-
-        // If a coin is not under exit/challenge, then ignore it
-        if (coin.state != State.EXITING)
-            return;
-
-        // If an exit is not matured, ignore it
-        if ((block.timestamp - coin.exit.createdAt) <= MATURITY_PERIOD)
-            /// TODO time error
-            return;
+        require((block.timestamp - coin.exit.createdAt) > MATURITY_PERIOD, "You must wait the maturity period before finalizing the exit");
 
         // Check if there are any pending challenges for the coin.
         // `checkPendingChallenges` will also penalize
@@ -513,6 +505,7 @@ contract RootChain is IERC721Receiver {
     /// @param signature The signature of the txBytes by the coin
     ///        owner indicated in prevTx
     /// @param blockNumber The block containing the exitingTx
+    /// TODO: change parameters order and names to match challengeAfter()
     function challengeBefore(
         uint64 slot,
         bytes calldata txBytes,
