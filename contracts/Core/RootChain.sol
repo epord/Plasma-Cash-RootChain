@@ -61,6 +61,7 @@ contract RootChain is IERC721Receiver {
      * @param slot The slot of the coin whose exit was challenged
      * @param txHash The hash of the tx used for the challenge
      */
+    //TODO index for owner
     event ChallengedExit(uint64 indexed slot, bytes32 txHash, uint256 challengingBlockNumber);
 
     /**
@@ -847,6 +848,16 @@ contract RootChain is IERC721Receiver {
         uint256 index = uint256(challenges[slot].indexOf(txHash));
         ChallengeLib.Challenge memory c = challenges[slot][index];
         return (c.owner, c.challenger, c.txHash, c.challengingBlockNumber);
+    }
+
+    function getChallenges(uint64 slot) external view returns(bytes32[] memory) {
+        uint length = challenges[slot].length;
+        bytes32[] memory slotChallenges = new bytes32[](length);
+        for (uint i = 0; i < length; i++) {
+            slotChallenges[i] = challenges[slot][i].txHash;
+        }
+
+        return slotChallenges;
     }
 
     function getExit(uint64 slot) external view returns(address, uint256, uint256, State, uint256) {
