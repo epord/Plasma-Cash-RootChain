@@ -868,4 +868,9 @@ contract RootChain is IERC721Receiver {
     function getBlockRoot(uint256 blockNumber) public view returns (bytes32 root) {
         root = childChain[blockNumber].root;
     }
+
+    function getBalance() external view returns(uint256, uint256) {
+        // Can only withdraw bond if the msg.sender
+        return (balances[msg.sender].bonded, balances[msg.sender].withdrawable);
+    }
 }
