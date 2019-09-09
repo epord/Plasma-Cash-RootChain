@@ -22,6 +22,8 @@ import "./ValidatorManagerContract.sol";
 
 contract RootChain is IERC721Receiver {
 
+    event Debug(address message);
+
     /**
      * Event for coin deposit logging.
      * @notice The Deposit event indicates that a deposit block has been added
@@ -29,11 +31,10 @@ contract RootChain is IERC721Receiver {
      * @param slot Plasma slot, a unique identifier, assigned to the deposit
      * @param blockNumber The index of the block in which a deposit transaction
      *                    is included
-     * @param denomination Quantity of a particular coin deposited
      * @param from The address of the depositor
      * @param contractAddress The address of the contract making the deposit
      */
-    event Deposit(uint64 indexed slot, uint256 blockNumber, uint256 denomination,
+    event Deposit(uint64 indexed slot, uint256 blockNumber,
                   address indexed from, address indexed contractAddress);
 
     /**
@@ -46,7 +47,15 @@ contract RootChain is IERC721Receiver {
      */
     event SubmittedBlock(uint256 blockNumber, bytes32 root, uint256 timestamp);
 
-    event Debug(address message);
+    /**
+     * Event for secret-revealing block submission logging
+     * @notice The event indicates the addition of a new Secret Revealing block
+     * @param blockNumber The block number of the submitted block
+     * @param root The root hash of the Merkle tree containing all of a block's
+     *             secrets.
+     * @param timestamp The time when a block was added to the Plasma chain
+     */
+    event SubmittedSecretBlock(uint256 blockNumber, bytes32 root, uint256 timestamp);
 
     /**
      * Event for logging exit starts
@@ -59,10 +68,10 @@ contract RootChain is IERC721Receiver {
      * Event for exit challenge logging
      * @notice This event only fires if `challengeBefore` is called.
      * @param slot The slot of the coin whose exit was challenged
+     * @param owner The current claiming owner of the exit
      * @param txHash The hash of the tx used for the challenge
      */
-    //TODO index for owner
-    event ChallengedExit(uint64 indexed slot, bytes32 txHash, uint256 challengingBlockNumber);
+    event ChallengedExit(uint64 indexed slot, address indexed owner, bytes32 txHash, uint256 challengingBlockNumber);
 
     /**
      * Event for exit response logging
@@ -111,13 +120,11 @@ contract RootChain is IERC721Receiver {
      * Event to log the withdrawal of a coin
      * @param owner The address of the user who withdrew bonds
      * @param slot the slot of the coin that was exited
-     * @param mode The type of coin that is being withdrawn (ERC721) (Extendible in the future)
      * @param contractAddress The contract address where the coin is being withdrawn from
               is same as `from` when withdrawing a ETH coin
      * @param uid The uid of the coin being withdrawn if ERC721, else 0
-     * @param denomination The denomination of the coin which has been withdrawn (=1 for ERC721)
      */
-    event Withdrew(address indexed owner, uint64 indexed slot, Mode mode, address contractAddress, uint uid, uint denomination);
+    event Withdrew(address indexed owner, uint64 indexed slot, address contractAddress, uint uid);
 
     /**
      * Event to pause deposits in the contract.
@@ -128,20 +135,30 @@ contract RootChain is IERC721Receiver {
 
     using SafeMath for uint256;
     using Transaction for bytes;
+    using Transaction for RLPReader.RLPItem[];
+    using RLPReader for RLPReader.RLPItem;
+    using Transaction for Transaction.AtomicSwapTX;
     using ECVerify for bytes32;
     using ChallengeLib for ChallengeLib.Challenge[];
 
     uint256 constant BOND_AMOUNT = 0.1 ether;
-    // The contract does not accept more than that amount
-    uint256 constant MAX_VALUE = 10 ether;
-    // An exit can be finalized after it has matured,
-    // after T2 = T0 + MATURITY_PERIOD
-    // An exit can be challenged in the first window
-    // between T0 and T1 ( T1 = T0 + CHALLENGE_WINDOW)
-    // A challenge can be responded to in the second window
-    // between T1 and T2
+
+    /* An exit can be finalized after it has matured,
+     * after T2 = T0 + MATURITY_PERIOD
+     * An exit can be challenged in the first window
+     * between T0 and T1 ( T1 = T0 + CHALLENGE_WINDOW)
+     * A challenge can be responded to in the second window
+     * between T1 and T2
+    */
     uint256 constant MATURITY_PERIOD = 7 days;
     uint256 constant CHALLENGE_WINDOW = 3 days + 12 hours;
+
+    /* A secret-revealing root hash can only be submitted during a period
+     * after T0 and before T0 + SECRET_REVEALING_PERIOD
+     * where T0 is the time the corresponding block was submitted
+    */
+    uint256 constant SECRET_REVEALING_PERIOD = 1 days;
+
     bool paused;
 
     /*
@@ -174,7 +191,6 @@ contract RootChain is IERC721Receiver {
         uint256 bonded;
         uint256 withdrawable;
     }
-    mapping (address => Balance) public balances;
 
     // Each exit can only be challenged by a single challenger at a time
     struct Exit {
@@ -185,45 +201,40 @@ contract RootChain is IERC721Receiver {
         uint256 prevBlock;
         uint256 exitBlock;
     }
+
     enum State {
         NOT_EXITING,
         EXITING,
         EXITED
     }
 
-    // Track owners of txs that are pending a response
-    struct Challenge {
-        address owner;
-        uint256 blockNumber;
-    }
-    mapping (uint64 => ChallengeLib.Challenge[]) challenges;
-
-    // tracking of NFTs deposited in each slot
-    enum Mode {
-        ERC721
-    }
-    uint64 public numCoins = 0;
-    mapping (uint64 => Coin) coins;
     struct Coin {
-        Mode mode;
         State state;
         address owner; // who owns that nft
         address contractAddress; // which contract does the coin belong to
         Exit exit;
         uint256 uid;
-        uint256 denomination;
         uint256 depositBlock;
     }
 
-    // child chain
-    uint256 public childBlockInterval = 1000;
-    uint256 public currentBlock = 0;
+    uint64 public numCoins = 0;
+
+    mapping (address => Balance) public balances;
+    mapping (uint64 => ChallengeLib.Challenge[]) challenges;
+    mapping (uint64 => Coin) coins;
+
     struct ChildBlock {
         bytes32 root;
         uint256 createdAt;
     }
 
-    mapping(uint256 => ChildBlock) public childChain;
+    // child chain
+    uint256 public childBlockInterval = 1000;
+    uint256 public currentBlock = 0;
+    mapping (uint256 => ChildBlock) public childChain;
+    mapping (uint256 => ChildBlock) public secretRevealingChain;
+
+
     ValidatorManagerContract vmc;
     SparseMerkleTree smt;
 
@@ -235,10 +246,7 @@ contract RootChain is IERC721Receiver {
 
     /// @dev called by a Validator to append a Plasma block to the Plasma chain
     /// @param root The transaction root hash of the Plasma block being added
-    function submitBlock(uint256 blockNumber, bytes32 root)
-        public
-        isValidator
-    {
+    function submitBlock(uint256 blockNumber, bytes32 root) public isValidator {
         // rounding to next whole `childBlockInterval`
         require(blockNumber >= currentBlock, "A block less than currentBlock cannot be submitted");
         currentBlock = blockNumber;
@@ -251,6 +259,23 @@ contract RootChain is IERC721Receiver {
         emit SubmittedBlock(currentBlock, root, block.timestamp);
     }
 
+    /// @dev called by a Validator to append a Secret Revealing block to the Plasma chain
+    /// @param root The transaction root hash of the Secret Revealing block being added
+    function submitSecretBlock(uint256 blockNumber, bytes32 root) public isValidator {
+        // rounding to next whole `childBlockInterval`
+        ChildBlock memory childBlock = childChain[blockNumber];
+        require(childBlock.root != 0, "A block must be submitted first in order to reveal the swap secrets");
+        require((block.timestamp - childBlock.createdAt) < SECRET_REVEALING_PERIOD ,
+                "Time to reveal secrets is already over");
+
+        secretRevealingChain[blockNumber] = ChildBlock({
+            root: root,
+            createdAt: block.timestamp
+            });
+
+        emit SubmittedSecretBlock(blockNumber, root, block.timestamp);
+    }
+
     /// @dev Allows anyone to deposit funds into the Plasma chain, called when
     //       contract receives ERC721
     /// @notice Appends a deposit block to the Plasma chain
@@ -258,17 +283,7 @@ contract RootChain is IERC721Receiver {
     /// @param uid The uid of the ERC721 coin being deposited. This is an
     ///            identifier allocated by the ERC721 token contract; it is not
     ///            related to `slot`. If the coin is ETH or ERC20 the uid is 0
-    /// @param denomination The quantity of a particular coin being deposited (1 for ERC721) (Extensible in the future)
-    /// @param mode The type of coin that is being deposited (ERC721)
-    function deposit(
-        address from,
-        address contractAddress,
-        uint256 uid,
-        uint256 denomination,
-        Mode mode
-    )
-        private
-    {
+    function deposit(address from, address contractAddress, uint256 uid) private {
         require(!paused, "Contract is not accepting more deposits!");
         currentBlock = currentBlock.add(1);
         uint64 slot = uint64(bytes8(keccak256(abi.encodePacked(numCoins, msg.sender, from))));
@@ -277,14 +292,11 @@ contract RootChain is IERC721Receiver {
         Coin storage coin = coins[slot];
         coin.uid = uid;
         coin.contractAddress = contractAddress;
-        coin.denomination = denomination;
         coin.depositBlock = currentBlock;
         coin.owner = from;
         coin.state = State.NOT_EXITING;
-        coin.mode = mode;
 
         childChain[currentBlock] = ChildBlock({
-            // save signed transaction hash as root
             // hash for deposit transactions is the hash of its slot
             root: keccak256(abi.encodePacked(slot)),
             createdAt: block.timestamp
@@ -294,7 +306,6 @@ contract RootChain is IERC721Receiver {
         emit Deposit(
             slot,
             currentBlock,
-            denomination,
             from,
             contractAddress
         );
@@ -304,6 +315,18 @@ contract RootChain is IERC721Receiver {
 
     /******************** EXIT RELATED ********************/
 
+    // @dev Allows and exit of a deposited transaction
+    // @param slot The slot of the coin being exited
+    function startDepositExit(uint64 slot)
+    external
+    payable isBonded
+    isState(slot, State.NOT_EXITING) {
+        Coin memory coin = coins[slot];
+        require(coin.owner == msg.sender, "Sender does not match deposit owner");
+        pushExit(slot, address(0), 0, coin.depositBlock);
+    }
+
+    // @dev Allows and exit of a non-depositing transaction
     function startExit(
         uint64 slot,
         bytes calldata prevTxBytes, bytes calldata exitingTxBytes,
@@ -323,17 +346,12 @@ contract RootChain is IERC721Receiver {
             blocks
         );
 
-        if (blocks[1] % childBlockInterval != 0) {
-            pushExit(slot, address(0), blocks);
-        } else {
-            pushExit(slot, prevTxBytes.getOwner(), blocks);
-        }
+        pushExit(slot, prevTxBytes.getOwner(), blocks[0], blocks[1]);
     }
 
     /// @dev Verifies that consecutive two transaction involving the same coin
     ///      are valid
-    /// @notice If exitingTxBytes corresponds to a deposit transaction,
-    ///         prevTxBytes cannot have a meaningul value and thus it is ignored.
+    /// @notice If exitingTxBytes corresponds to a deposit transaction, this function fails
     /// @param prevTxBytes The RLP-encoded transaction involving a particular
     ///        coin which took place directly before exitingTxBytes
     /// @param exitingTxBytes The RLP-encoded transaction involving a particular
@@ -341,7 +359,7 @@ contract RootChain is IERC721Receiver {
     /// @param prevTxInclusionProof An inclusion proof of prevTx
     /// @param exitingTxInclusionProof An inclusion proof of exitingTx
     /// @param signature The signature of the exitingTxBytes by the coin
-    ///        owner indicated in prevTx
+    ///        owner indicated in prevTx.
     /// @param blocks An array of two block numbers, at index 0, the block
     ///        containing the prevTx and at index 1, the block containing
     ///        the exitingTx
@@ -353,13 +371,8 @@ contract RootChain is IERC721Receiver {
         private
         view
     {
-    if (blocks[1] % childBlockInterval != 0) {
-            checkIncludedAndSigned(
-                exitingTxBytes,
-                exitingTxInclusionProof,
-                signature,
-                blocks[1]
-            );
+        if (blocks[1] % childBlockInterval != 0) {
+            revert("Please do a startDepositExt for deposited transactions");
         } else {
             checkBothIncludedAndSigned(
                 prevTxBytes, exitingTxBytes, prevTxInclusionProof,
@@ -369,11 +382,10 @@ contract RootChain is IERC721Receiver {
         }
     }
 
-    // Needed to bypass stack limit errors
     function pushExit(
         uint64 slot,
         address prevOwner,
-        uint256[2] memory blocks)
+        uint256 prevBlock, uint256 exitingBlock)
         private
     {
         // Create exit
@@ -383,8 +395,8 @@ contract RootChain is IERC721Receiver {
             owner: msg.sender,
             createdAt: block.timestamp,
             bond: msg.value,
-            prevBlock: blocks[0],
-            exitBlock: blocks[1]
+            prevBlock: prevBlock,
+            exitBlock: exitingBlock
         });
 
         // Update coin state
@@ -425,6 +437,7 @@ contract RootChain is IERC721Receiver {
     function checkPendingChallenges(uint64 slot) private returns (bool hasChallenges) {
         uint256 length = challenges[slot].length;
         bool slashed;
+        hasChallenges = false;
         for (uint i = 0; i < length; i++) {
             if (challenges[slot][i].txHash != 0x0) {
                 // Penalize the exitor and reward the first valid challenger.
@@ -466,31 +479,22 @@ contract RootChain is IERC721Receiver {
         }
     }
 
-
-
     /// @dev Withdraw a UTXO that has been exited
     /// @param slot The slot of the coin being withdrawn
     function withdraw(uint64 slot) external isState(slot, State.EXITED) {
         require(coins[slot].owner == msg.sender, "You do not own that UTXO");
         uint256 uid = coins[slot].uid;
-        uint256 denomination = coins[slot].denomination;
 
         // Delete the coin that is being withdrawn
         Coin memory c = coins[slot];
         delete coins[slot];
-        if (c.mode == Mode.ERC721) {
-            ERC721(c.contractAddress).safeTransferFrom(address(this), msg.sender, uid);
-        } else {
-            revert("Invalid coin mode");
-        }
+        ERC721(c.contractAddress).safeTransferFrom(address(this), msg.sender, uid);
 
         emit Withdrew(
             msg.sender,
             slot,
-            c.mode,
             c.contractAddress,
-            uid,
-            denomination
+            uid
         );
     }
 
@@ -503,21 +507,18 @@ contract RootChain is IERC721Receiver {
     /// @param txBytes The RLP-encoded transaction involving a particular
     ///        coin which an exiting owner of the coin claims to be the latest
     /// @param txInclusionProof An inclusion proof of exitingTx
-    /// @param signature The signature of the txBytes by the coin
     ///        owner indicated in prevTx
     /// @param blockNumber The block containing the exitingTx
-    /// TODO: change parameters order and names to match challengeAfter()
     function challengeBefore(
         uint64 slot,
         bytes calldata txBytes,
         bytes calldata txInclusionProof,
-        bytes calldata signature,
         uint256 blockNumber)
         external
         payable isBonded
         isState(slot, State.EXITING)
     {
-        checkBefore(slot, txBytes, blockNumber, signature, txInclusionProof);
+        checkBefore(slot, txBytes, txInclusionProof, blockNumber);
         setChallenged(slot, txBytes.getOwner(), blockNumber, txBytes.getHash());
     }
 
@@ -567,36 +568,35 @@ contract RootChain is IERC721Receiver {
         private
         view
     {
-        Transaction.TX memory txData = txBytes.getTx();
+        Transaction.TX memory txData = checkTxValid(txBytes, proof, blockNumber);
         require(txData.hash.ecverify(signature, challenges[slot][index].owner), "Invalid signature");
         require(txData.slot == slot, "Tx is referencing another slot");
         require(blockNumber > challenges[slot][index].challengingBlockNumber, "BlockNumber must be after the chalenge");
         require(blockNumber <= coins[slot].exit.exitBlock, "Cannot respond with a tx after the exit");
-        checkTxIncluded(txData.slot, txData.hash, blockNumber, proof);
     }
 
     function challengeBetween(
         uint64 slot,
-        uint256 challengingBlockNumber,
         bytes calldata challengingTransaction,
         bytes calldata proof,
-        bytes calldata signature)
+        bytes calldata signature,
+        uint256 challengingBlockNumber)
         external isState(slot, State.EXITING)
     {
-        checkBetween(slot, challengingTransaction, challengingBlockNumber, signature, proof);
+        checkBetween(slot, challengingTransaction, proof, signature, challengingBlockNumber);
         applyPenalties(slot);
     }
 
     function challengeAfter(
         uint64 slot,
-        uint256 challengingBlockNumber,
         bytes calldata challengingTransaction,
         bytes calldata proof,
-        bytes calldata signature)
+        bytes calldata signature,
+        uint256 challengingBlockNumber)
         external
         isState(slot, State.EXITING)
     {
-        checkAfter(slot, challengingTransaction, challengingBlockNumber, signature, proof);
+        checkAfter(slot, challengingTransaction, proof, signature, challengingBlockNumber);
         applyPenalties(slot);
     }
 
@@ -606,10 +606,8 @@ contract RootChain is IERC721Receiver {
     function checkBefore(
         uint64 slot,
         bytes memory txBytes,
-        uint blockNumber,
-        bytes memory signature,
-        bytes memory proof
-    )
+        bytes memory proof,
+        uint blockNumber)
         private
         view
     {
@@ -618,10 +616,8 @@ contract RootChain is IERC721Receiver {
             "Tx should be before the exit's parent block"
         );
 
-        Transaction.TX memory txData = txBytes.getTx();
-        require(txData.hash.recover(signature) != address(0x0), "Invalid signature");
+        Transaction.TX memory txData = checkTxValid(txBytes, proof, blockNumber);
         require(txData.slot == slot, "Tx is referencing another slot");
-        checkTxIncluded(slot, txData.hash, blockNumber, proof);
     }
 
 
@@ -630,10 +626,9 @@ contract RootChain is IERC721Receiver {
     function checkBetween(
         uint64 slot,
         bytes memory txBytes,
-        uint blockNumber,
+        bytes memory proof,
         bytes memory signature,
-        bytes memory proof
-    )
+        uint blockNumber)
         private
         view
     {
@@ -643,23 +638,26 @@ contract RootChain is IERC721Receiver {
             "Tx should be between the exit's blocks"
         );
 
-        Transaction.TX memory txData = txBytes.getTx();
+        Transaction.TX memory txData = checkTxValid(txBytes, proof, blockNumber);
         require(txData.hash.ecverify(signature, coins[slot].exit.prevOwner), "Invalid signature");
         require(txData.slot == slot, "Tx is referencing another slot");
-        checkTxIncluded(slot, txData.hash, blockNumber, proof);
     }
 
-    function checkAfter(uint64 slot, bytes memory txBytes, uint blockNumber, bytes memory signature, bytes memory proof) private view {
+    function checkAfter(
+        uint64 slot,
+        bytes memory txBytes,
+        bytes memory proof,
+        bytes memory signature,
+        uint blockNumber) private view {
         require(
             coins[slot].exit.exitBlock < blockNumber,
             "Tx should be after the exitBlock"
         );
 
-        Transaction.TX memory txData = txBytes.getTx();
+        Transaction.TX memory txData = checkTxValid(txBytes, proof, blockNumber);
         require(txData.hash.ecverify(signature, coins[slot].exit.owner), "Invalid signature");
         require(txData.slot == slot, "Tx is referencing another slot");
         require(txData.prevBlock == coins[slot].exit.exitBlock, "Not a direct spend");
-        checkTxIncluded(slot, txData.hash, blockNumber, proof);
     }
 
     function applyPenalties(uint64 slot) private {
@@ -690,7 +688,7 @@ contract RootChain is IERC721Receiver {
             })
         );
 
-        emit ChallengedExit(slot, txHash, challengingBlockNumber);
+        emit ChallengedExit(slot, owner, txHash, challengingBlockNumber);
     }
 
     /******************** BOND RELATED ********************/
@@ -718,22 +716,6 @@ contract RootChain is IERC721Receiver {
 
     /******************** PROOF CHECKING ********************/
 
-    function checkIncludedAndSigned(
-        bytes memory exitingTxBytes,
-        bytes memory exitingTxInclusionProof,
-        bytes memory signature,
-        uint256 blk)
-        private
-        view
-    {
-        Transaction.TX memory txData = exitingTxBytes.getTx();
-
-        // Deposit transactions need to be signed by their owners
-        // e.g. Alice signs a transaction to Alice
-        require(txData.hash.ecverify(signature, txData.owner), "Invalid signature");
-        checkTxIncluded(txData.slot, txData.hash, blk, exitingTxInclusionProof);
-    }
-
     function checkBothIncludedAndSigned(
         bytes memory prevTxBytes, bytes memory exitingTxBytes,
         bytes memory prevTxInclusionProof, bytes memory exitingTxInclusionProof,
@@ -742,25 +724,66 @@ contract RootChain is IERC721Receiver {
         private
         view
     {
-        if (blocks[0] % childBlockInterval != 0) {
-            require(blocks[0] < blocks[1], "Block on the first index must be the earlier of the 2 blocks");
-        }
+        require(blocks[0] < blocks[1], "Block on the first index must be the earlier of the 2 blocks");
 
-        Transaction.TX memory exitingTxData = exitingTxBytes.getTx();
-        Transaction.TX memory prevTxData = prevTxBytes.getTx();
+        Transaction.TX memory prevTxData    = checkTxValid(prevTxBytes, prevTxInclusionProof, blocks[0]);
+        Transaction.TX memory exitingTxData = checkTxValid(exitingTxBytes, exitingTxInclusionProof, blocks[1]);
 
         // Both transactions need to be referring to the same slot
         require(exitingTxData.slot == prevTxData.slot,"Slot on the ExitingTx does not match that on the prevTx");
 
-        // The exiting transaction must be signed by the previous transaciton's owner
-        require(exitingTxData.hash.ecverify(signature, prevTxData.owner), "Invalid signature");
-
-        // Both transactions must be included in their respective blocks
-        checkTxIncluded(prevTxData.slot, prevTxData.hash, blocks[0], prevTxInclusionProof);
-        checkTxIncluded(exitingTxData.slot, exitingTxData.hash, blocks[1], exitingTxInclusionProof);
+        // The exiting transaction must be signed by the previous transaciton's receiver
+        require(exitingTxData.hash.ecverify(signature, prevTxData.receiver), "Invalid signature");
     }
 
-    function checkTxIncluded(
+
+    function checkTxValid(
+        bytes memory txBytes,
+        bytes memory proof,
+        uint256 blockNumber)
+    private
+    view returns(Transaction.TX memory)
+    {
+        RLPReader.RLPItem[] memory rlpTx = txBytes.toRLPItems();
+
+        if(rlpTx.isBasicTransaction()) {
+            //Basic transactions only validate are included
+            Transaction.TX memory txData = rlpTx.getBasicTx(txBytes);
+            checkHashIncluded(txData.slot, txData.hash, blockNumber, proof);
+            return txData;
+
+        } else if(rlpTx.isAtomicSwap()) {
+            ChildBlock memory secretRevealingBlock = secretRevealingChain[blockNumber];
+
+            if(secretRevealingBlock.root != 0) {
+                Transaction.AtomicSwapTX[] memory txsData = rlpTx.getAtomicSwapTxs();
+
+                //Check signature B -> A. A -> B signature is checked in outside if this function
+                require(txsData[1].hash.ecverify(txsData[1].signature, txsData[1].prevOwner), "Invalid signature B in atomic swap");
+
+                RLPReader.RLPItem[] memory proofs = proof.toRLPItems();
+                require(proofs.length == 4, "4 proof must be submitted for an atomic swap");
+                checkHashIncluded(txsData[0].slot, txsData[0].hash, blockNumber, proofs[0].toBytes());
+                checkHashIncluded(txsData[1].slot, txsData[1].hash, blockNumber, proofs[1].toBytes());
+                checkHashIncludedSecret(txsData[0].slot, txsData[0].secretHash, blockNumber, proofs[2].toBytes());
+                checkHashIncludedSecret(txsData[1].slot, txsData[1].secretHash, blockNumber, proofs[3].toBytes());
+
+                return txsData[0].toBasicTx();
+            } else {
+                ChildBlock memory childBlock = childChain[blockNumber];
+                if((block.timestamp - childBlock.createdAt) > SECRET_REVEALING_PERIOD) {
+                    revert("Secret was never revealed for this block, swap is invalid");
+                } else {
+                    revert("Secret has not yet been revealed, there is still time to commit the transaction");
+                }
+            }
+        } else {
+            revert("txBytes do not correspond neither to basic TX nor to Atomic swap");
+        }
+    }
+
+
+    function checkHashIncluded(
         uint64 slot,
         bytes32 txHash,
         uint256 blockNumber,
@@ -788,6 +811,29 @@ contract RootChain is IERC721Receiver {
         }
     }
 
+    function checkHashIncludedSecret(
+        uint64 slot,
+        bytes32 secret,
+        uint256 blockNumber,
+        bytes memory proof
+    )
+    private
+    view
+    {
+        bytes32 root = secretRevealingChain[blockNumber].root;
+        require(blockNumber % childBlockInterval == 0, "Trying to validate an atomic swap for a deposit block");
+        // Check against merkle tree for all other block numbers
+        require(
+            checkMembership(
+                secret,
+                root,
+                slot,
+                proof
+            ),
+            "Tx not included in claimed block"
+        );
+    }
+
     /******************** DEPOSIT FUNCTIONS ********************/
 
     function pause() external isValidator {
@@ -809,8 +855,7 @@ contract RootChain is IERC721Receiver {
     returns (bytes4)
      {
         require(ERC721(msg.sender).ownerOf(tokenId) == address(this), "Token was not transfered correctly");
-        //TODO: Should we allow any contracts? Also is this enough proof of a ERC721 transaction?
-        deposit(from, msg.sender, tokenId, 1, Mode.ERC721);
+        deposit(from, msg.sender, tokenId);
         return this.onERC721Received.selector;
     }
 
@@ -835,9 +880,9 @@ contract RootChain is IERC721Receiver {
             proof);
     }
 
-    function getPlasmaCoin(uint64 slot) external view returns(uint256, uint256, uint256, address, State, Mode, address) {
+    function getPlasmaCoin(uint64 slot) external view returns(uint256, uint256, address, State, address) {
         Coin memory c = coins[slot];
-        return (c.uid, c.depositBlock, c.denomination, c.owner, c.state, c.mode, c.contractAddress);
+        return (c.uid, c.depositBlock, c.owner, c.state, c.contractAddress);
     }
 
     function getChallenge(uint64 slot, bytes32 txHash)
