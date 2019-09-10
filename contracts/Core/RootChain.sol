@@ -880,6 +880,20 @@ contract RootChain is IERC721Receiver {
             proof);
     }
 
+    function checkInclusion(
+        bytes32 txHash,
+        uint256 blockNumber,
+        uint64 slot,
+        bytes memory proof
+    ) public view returns (bool) {
+        ChildBlock memory childBlock = childChain[blockNumber];
+        if (blockNumber % childBlockInterval != 0) {
+            return txHash == childBlock.root && keccak256(abi.encodePacked(slot)) == childBlock.root;
+        } else {
+            return checkMembership(txHash, childBlock.root, slot, proof);
+        }
+    }
+
     function getPlasmaCoin(uint64 slot) external view returns(uint256, uint256, address, State, address) {
         Coin memory c = coins[slot];
         return (c.uid, c.depositBlock, c.owner, c.state, c.contractAddress);
