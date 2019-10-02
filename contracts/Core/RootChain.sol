@@ -765,8 +765,8 @@ contract RootChain is IERC721Receiver {
                 require(proofs.length == 4, "4 proof must be submitted for an atomic swap");
                 checkHashIncluded(txsData[0].slot, txsData[0].hash, blockNumber, proofs[0].toBytes());
                 checkHashIncluded(txsData[1].slot, txsData[1].hash, blockNumber, proofs[1].toBytes());
-                checkHashIncludedSecret(txsData[0].slot, txsData[0].secretHash, blockNumber, proofs[2].toBytes());
-                checkHashIncludedSecret(txsData[1].slot, txsData[1].secretHash, blockNumber, proofs[3].toBytes());
+                checkHashIncludedSecret(txsData[0].slot, txsData[0].secret, blockNumber, proofs[2].toBytes());
+                checkHashIncludedSecret(txsData[1].slot, txsData[1].secret, blockNumber, proofs[3].toBytes());
 
                 return txsData[0].toBasicTx();
             } else {
@@ -830,7 +830,7 @@ contract RootChain is IERC721Receiver {
                 slot,
                 proof
             ),
-            "Tx not included in claimed block"
+            "Tx secret not included in claimed block"
         );
     }
 
@@ -894,6 +894,15 @@ contract RootChain is IERC721Receiver {
         }
     }
 
+    function checkValidationAndInclusion(
+        bytes calldata txBytes,
+        bytes calldata proof,
+        uint256 blockNumber
+    ) external view returns (bool) {
+        checkTxValid(txBytes, proof, blockNumber);
+        return true;
+    }
+
     function getPlasmaCoin(uint64 slot) external view returns(uint256, uint256, address, State, address) {
         Coin memory c = coins[slot];
         return (c.uid, c.depositBlock, c.owner, c.state, c.contractAddress);
@@ -926,6 +935,10 @@ contract RootChain is IERC721Receiver {
 
     function getBlockRoot(uint256 blockNumber) public view returns (bytes32 root) {
         root = childChain[blockNumber].root;
+    }
+
+    function getSecretBlockRoot(uint256 blockNumber) public view returns (bytes32 root) {
+        root = secretRevealingChain[blockNumber].root;
     }
 
     function getBalance() external view returns(uint256, uint256) {

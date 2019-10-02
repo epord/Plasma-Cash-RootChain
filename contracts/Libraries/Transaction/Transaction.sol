@@ -24,7 +24,7 @@ library Transaction {
         uint256 prevBlock;
         address prevOwner;
         address receiver;
-        uint256 secret;
+        bytes32 secret;
         bytes signature;
         bytes32 secretHash;
         bytes32 hash;
@@ -65,12 +65,12 @@ library Transaction {
 
         transactions[0].slot            = uint64(rlpTx[0].toUint());
         transactions[0].prevBlock       = rlpTx[1].toUint();
-        transactions[0].secret          = rlpTx[2].toUint();
+        transactions[0].secret          = bytes32(rlpTx[2].toUint());
         transactions[0].receiver        = rlpTx[3].toAddress();
         transactions[0].swappingSlot    = uint64(rlpTx[4].toUint());
 
-        transactions[1].prevBlock       = uint64(rlpTx[5].toUint());
-        transactions[1].secret          = rlpTx[6].toUint();
+        transactions[1].prevBlock       = rlpTx[5].toUint();
+        transactions[1].secret          = bytes32(rlpTx[6].toUint());
         transactions[1].receiver        = rlpTx[7].toAddress();
         transactions[1].signature       = rlpTx[8].toBytes();
 
@@ -81,13 +81,14 @@ library Transaction {
         transactions[1].slot            = transactions[0].swappingSlot;
         transactions[1].swappingSlot    = transactions[0].slot;
         transactions[1].prevOwner       = transactions[0].receiver;
+        transactions[1].secretHash      = keccak256(abi.encodePacked(transactions[1].secret));
         transactions[1].hash            = atomicSwapHash(transactions[1]);
 
         return transactions;
     }
 
     function atomicSwapHash(AtomicSwapTX memory atx) private pure returns (bytes32) {
-        return keccak256(abi.encodePacked(atx.slot, atx.prevBlock, atx.prevOwner, atx.swappingSlot, atx.receiver, atx.secretHash));
+        return keccak256(abi.encodePacked(atx.slot, atx.prevBlock, atx.secretHash, atx.receiver, atx.swappingSlot));
     }
 
     function toBasicTx(AtomicSwapTX memory atx) internal pure returns (TX memory) {
