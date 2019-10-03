@@ -1,14 +1,18 @@
 pragma solidity ^0.5.2;
+pragma experimental ABIEncoderV2;
 
 import 'openzeppelin-solidity/contracts/token/ERC721/ERC721.sol';
 import 'openzeppelin-solidity/contracts/ownership/Ownable.sol';
 import "openzeppelin-solidity/contracts/drafts/Counters.sol";
+import "../Libraries/Pokedex.sol";
 
-contract CryptoMons is ERC721, Ownable {
+contract CryptoMons is ERC721, Ownable, Pokedex {
 
     using Counters for Counters.Counter;
 
     address plasma;
+    mapping (uint256 => Pokemon) cryptomons;
+
     uint256 constant CRYPTOMON_VALUE = 0.01 ether;
     Counters.Counter tokenCount;
 
@@ -28,7 +32,6 @@ contract CryptoMons is ERC721, Ownable {
 
     function changePlasma(address newPlasma) public onlyOwner isERC721Receiver(newPlasma) {
         plasma = newPlasma;
-
     }
 
     function buyCryptoMon() external payable CMPayment {
@@ -46,6 +49,11 @@ contract CryptoMons is ERC721, Ownable {
     function create() private {
         tokenCount.increment();
         _mint(msg.sender, tokenCount.current());
+        cryptomons[tokenCount.current()] = generateNewPokemon();
+    }
+
+    function getCryptomon(uint8 id) public view returns (Pokemon memory) {
+        return cryptomons[id];
     }
 
 }
