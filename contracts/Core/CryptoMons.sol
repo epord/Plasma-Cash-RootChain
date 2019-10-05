@@ -13,7 +13,7 @@ contract CryptoMons is ERC721, Ownable, Pokedex {
     address plasma;
     mapping (uint256 => Pokemon) cryptomons;
 
-    uint256 constant CRYPTOMON_VALUE = 0.01 ether;
+    uint256 constant CRYPTOMON_VALUE = 0.001 ether;
     Counters.Counter tokenCount;
 
     modifier CMPayment() {
