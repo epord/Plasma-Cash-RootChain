@@ -5,6 +5,8 @@ contract Pokedex {
 
     PokemonData[] pokedex;
 
+    //TODO add nature
+    //TODO add attacks
     enum Type {
         Normal,
         Fighting,
