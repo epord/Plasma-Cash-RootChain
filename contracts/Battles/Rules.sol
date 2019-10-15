@@ -13,10 +13,21 @@ library Rules {
         address winner;
     }
 
+    function validateStartState(
+        State.StateStruct memory state,
+        address player,
+        address opponent
+    ) internal pure {
+       require(state.turnNum == 0, "First turn must be 0");
+       require(state.participants[0] == player, "State player is incorrect");
+       require(state.participants[1] == opponent, "State opponent is incorrect");
+       state.validateStartState();
+    }
+    
     function validateTransition(
         State.StateStruct memory fromState,
         State.StateStruct memory toState
-    ) internal pure returns (bool) {
+    ) internal pure {
         require(
             toState.channelId == fromState.channelId,
             "Invalid transition: channelId must match on toState"
@@ -27,26 +38,32 @@ library Rules {
         );
 
         require(
-            validGameTransition(fromState, toState),
-            "Invalid transition from Game: transition must be valid"
+            toState.channelType == fromState.channelType,
+            "ChannelType must remain the same"
         );
 
-        return true;
+        require(
+            toState.participants[0] == fromState.participants[0]
+            && toState.participants[1] == fromState.participants[1],
+            "Players must remain the same"
+        );
+
+        fromState.validateGameTransition(toState);
     }
 
 
     function validGameTransition(
         State.StateStruct memory fromState,
         State.StateStruct memory toState
-    ) internal pure returns (bool) {
-        return PlasmaTurnGame(fromState.channelType).validateTransition(fromState, toState);
+    ) internal pure {
+        fromState.validateGameTransition(toState);
     }
 
     function validateSignedTransition(
         State.StateStruct memory fromState,
         State.StateStruct memory toState,
         bytes[] memory signatures
-    ) internal pure returns (bool) {
+    ) internal pure {
         // states must be signed by the appropriate participant
         fromState.requireSignature(signatures[0]);
         toState.requireSignature(signatures[1]);
@@ -58,7 +75,7 @@ library Rules {
         State.StateStruct memory challengeState,
         State.StateStruct memory refutationState,
         bytes memory signature
-    ) internal pure returns (bool) {
+    ) internal pure {
         require(
             refutationState.turnNum > challengeState.turnNum,
             "the refutationState must have a higher nonce"
@@ -69,19 +86,16 @@ library Rules {
         );
         // ... and be signed (by that mover)
         refutationState.requireSignature(signature);
-
-        return true;
     }
 
     function validateRespondWithMove(
         State.StateStruct memory challengeState,
         State.StateStruct memory nextState,
         bytes memory signature
-    ) internal pure returns (bool) {
+    ) internal pure {
         // check that the challengee's signature matches
         nextState.requireSignature(signature);
         validateTransition(challengeState, nextState);
-        return true;
     }
 
     function validateAlternativeRespondWithMove(
@@ -89,7 +103,7 @@ library Rules {
         State.StateStruct memory alternativeState,
         State.StateStruct memory nextState,
         bytes[] memory signatures
-    ) internal pure returns (bool) {
+    ) internal pure {
 
         // checking the alternative state:
         require(
@@ -108,12 +122,7 @@ library Rules {
         // checking the nextState:
         // .. it must be signed (my the challengee)
         nextState.requireSignature(signatures[1]);
-        
-        require(
-            validateTransition(alternativeState, nextState),
-            "it must be a valid transition of the gamestate (from the alternative state)"
-        );
 
-        return true;
+        validateTransition(alternativeState, nextState);
     }
 }

@@ -14,10 +14,6 @@ library Adjudicators {
 
     uint constant CHALLENGE_DURATION = 10 * 1 minutes;
 
-    function game(PlasmaCM.FMChannel storage channel) internal returns (PlasmaTurnGame) {
-        return (PlasmaTurnGame)(channel.channelType);
-    }
-
     function forceFirstMove(
         PlasmaCM.FMChannel storage channel,
         State.StateStruct memory initialState,
@@ -40,11 +36,11 @@ library Adjudicators {
         bytes[] memory signatures
     )
     internal
-    withCurrentChallenge(channel)
+    withoutCurrentChallenge(channel)
     whenState(channel, PlasmaCM.ChannelState.FUNDED)
     matchId(channel, fromState)
     {
-        require(Rules.validateSignedTransition(fromState, toState, signatures), "Must be a valid force move");
+        Rules.validateSignedTransition(fromState, toState, signatures);
         createChallenge(channel, uint32(now + CHALLENGE_DURATION), toState, issuer);
     }
 
@@ -73,9 +69,11 @@ library Adjudicators {
     whenState(channel, PlasmaCM.ChannelState.FUNDED)
     {
         Rules.validateAlternativeRespondWithMove(channel.forceMoveChallenge.state, alternativeState, nextState, signatures);
+        //TODO check if this should create a new challenge
         cancelCurrentChallenge(channel);
     }
 
+    //TODO revise this
     function refute(
         PlasmaCM.FMChannel storage channel,
         State.StateStruct memory refutingState,
@@ -101,7 +99,7 @@ library Adjudicators {
     matchId(channel, penultimateState)
     {
 
-        require(Rules.validateSignedTransition(penultimateState, ultimateState, signatures), "must be a valid force transition");
+        Rules.validateSignedTransition(penultimateState, ultimateState, signatures);
         require(ultimateState.isOver(), "Ultimate State must be a final state");
 
         //Create an expired challenge that acts as the final state

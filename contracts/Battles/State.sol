@@ -21,15 +21,27 @@ library State {
     }
 
     function mover(StateStruct memory state) public pure returns (address) {
-        return game(state).mover(state);
+        return game(state).mover(state.gameAttributes, state.turnNum, state.participants[0], state.participants[1]);
     }
 
     function winner(StateStruct memory state) public pure returns (address) {
-        return game(state).winner(state);
+        return game(state).winner(state.gameAttributes, state.turnNum, state.participants[0], state.participants[1]);
     }
 
     function isOver(StateStruct memory state) public pure returns (bool) {
-        return game(state).isOver(state);
+        return game(state).isOver(state.gameAttributes, state.turnNum);
+    }
+
+    function validateStartState(StateStruct memory state) public pure {
+        game(state).validateStartState(state.gameAttributes);
+    }
+
+    function validateGameTransition(StateStruct memory state, StateStruct memory newState) public pure {
+        game(state).validateTurnTransition(state.gameAttributes, state.turnNum, newState.gameAttributes);
+    }
+
+    function eventStartState(StateStruct memory initialState) public {
+        game(initialState).eventStartState(initialState.gameAttributes, initialState.participants[0], initialState.participants[1]);
     }
 
     //State is signed by mover

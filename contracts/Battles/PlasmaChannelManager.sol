@@ -8,6 +8,8 @@ import "openzeppelin-solidity/contracts/drafts/Counters.sol";
 import "../Libraries/ChallengeLib.sol";
 import "../Libraries/ECVerify.sol";
 
+
+//TODO add global timeout for channel
 //Plasma Channel Manager
 contract PlasmaCM {
     //events
@@ -19,6 +21,7 @@ contract PlasmaCM {
     using Adjudicators for FMChannel;
     using Counters for Counters.Counter;
     using ECVerify for bytes32;
+    using State for State.StateStruct;
 
     enum ChannelState { INITIATED, FUNDED, SUSPENDED, CLOSED, WITHDRAWN }
 
@@ -28,7 +31,7 @@ contract PlasmaCM {
         bytes32 initialStateHash;
         uint256 stake;
         address[2] players;
-        bytes[2] initialSignatures;
+        bytes initialSignature;
         address channelType;
         ChannelState state;
         Rules.Challenge forceMoveChallenge;
@@ -47,6 +50,7 @@ contract PlasmaCM {
         revert("Please send funds using the FundChannel or makeDeposit method");
     }
 
+    //TODO close unfunded channel
     function initiateChannel(
         address channelType,
         address opponent,
@@ -55,7 +59,7 @@ contract PlasmaCM {
         bytes memory initialSignature
     ) public payable Payment(stake) hasDeposit {
 
-        require(PlasmaTurnGame(channelType).isValidStartState(initialState), "Invalid initial state");
+        Rules.validateStartState(initialState, msg.sender, opponent);
 
         bytes32 initialStateHash = keccak256(abi.encode(initialState));
         initialStateHash.ecverify(initialSignature, msg.sender);
@@ -68,9 +72,6 @@ contract PlasmaCM {
         addresses[0] = msg.sender;
         addresses[1] = opponent;
 
-        bytes[2] memory signatures;
-        signatures[0] = initialSignature;
-
         openChannels[msg.sender].increment();
 
         Rules.Challenge memory rchallenge;
@@ -81,7 +82,7 @@ contract PlasmaCM {
             keccak256(abi.encode(initialState)),
             stake,
             addresses,
-            signatures,
+            initialSignature,
             channelType,
             ChannelState.INITIATED,
             rchallenge,
@@ -94,8 +95,7 @@ contract PlasmaCM {
 
     function fundChannel(
         uint channelId,
-        State.StateStruct memory initialState,
-        bytes memory initialSignature
+        State.StateStruct memory initialState
     ) public payable channelExists(channelId) hasDeposit {
         FMChannel storage channel = channels[channelId];
 
@@ -103,15 +103,13 @@ contract PlasmaCM {
         require(channel.players[1] == msg.sender, "Sender is not participant of this channel");
         require(channel.stake == msg.value, "Payment must be equal to channel stake");
         require(channel.initialStateHash == keccak256(abi.encode(initialState)), "Initial state does not match");
-        require(channel.initialStateHash.ecverify(initialSignature, msg.sender), "Invalid signature");
         channel.state = ChannelState.FUNDED;
-        channel.initialSignatures[1] = initialSignature;
 
         openChannels[msg.sender].increment();
 
         //TODO emit
         emit ChannelFunded(channel.channelId, channel.players[0], channel.players[1], channel.channelType);
-        PlasmaTurnGame(channel.channelType).eventStartState(initialState);
+        initialState.eventStartState();
     }
 
     function makeDeposit() external payable Payment(DEPOSIT_AMOUNT) {
