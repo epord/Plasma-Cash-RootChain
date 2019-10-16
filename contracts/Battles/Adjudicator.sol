@@ -24,8 +24,7 @@ library Adjudicators {
     whenState(channel, PlasmaCM.ChannelState.FUNDED)
     matchId(channel, initialState)
     {
-        require(channel.initialArgumentsHash == keccak256(initialState.gameAttributes), "Initial states does not match");
-        Rules.validateStartState(initialState, channel.players[0], channel.players[1]);
+        Rules.validateStartState(initialState, channel.players[0], channel.players[1], channel.initialArgumentsHash);
         createChallenge(channel, uint32(now + CHALLENGE_DURATION), initialState, issuer);
     }
 
@@ -42,7 +41,7 @@ library Adjudicators {
     matchId(channel, fromState)
     {
         if(signatures[0].length == 0 ) {
-            require(channel.initialArgumentsHash == keccak256(fromState.gameAttributes), "Initial states does not match");
+            Rules.validateStartState(fromState, channel.players[0], channel.players[1], channel.initialArgumentsHash);
             toState.requireSignature(signatures[1]);
             Rules.validateTransition(fromState, toState);
         } else {

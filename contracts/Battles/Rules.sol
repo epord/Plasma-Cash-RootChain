@@ -16,12 +16,13 @@ library Rules {
     function validateStartState(
         State.StateStruct memory state,
         address player,
-        address opponent
+        address opponent,
+        bytes32 initialArgumentsHash
     ) internal pure {
        require(state.turnNum == 0, "First turn must be 0");
        require(state.participants[0] == player, "State player is incorrect");
        require(state.participants[1] == opponent, "State opponent is incorrect");
-       state.validateStartState();
+       require(initialArgumentsHash == keccak256(state.gameAttributes), "Initial states does not match");
     }
     
     function validateTransition(
