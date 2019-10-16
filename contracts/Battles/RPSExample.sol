@@ -8,15 +8,16 @@ contract RPSExample is PlasmaTurnGame {
     using RLPReader for RLPReader.RLPItem;
 
     //Signed Player -> Signed OP        -> Signed Player
-    //initialState  + //State 1         + //State even      + //State odd         +  //State ending
+
+    //initialState  + //State 1         + //State even      + //State odd         +  //State ending (odd)
     //GamesToPlay   | //GamesToPlay     | //GamesToPlay     | //GamesToPlay       |  //GamesToPlay == 0
     //ScorePl       | //ScorePl         | //ScorePl         | //ScorePl           |  //ScorePl
     //ScoreOp       | //ScoreOp         | //ScoreOp         | //ScoreOp           |  //ScoreOp
-    //              | //HashDecision    | //HashDecision    | //PrevHashDecision  |  //PrevHashDecision
+    //              | //HashDecision    | //HashDecision    | //HashDecision  	  |  //HashDecision
     //              |                   | //DecsionPl       | //DecisionPl        |  //DecisionPl
     //              |                   |                   | //DecisionOp        |  //DecisionOp
     //              |                   |                   | //Salt              |  //Salt
-    //              |                   |                   | //HashDecision      |
+    //              |                   |                   | //nextHashDecision  |
 
     //Rock 0, Paper 1, Scissor 2
 

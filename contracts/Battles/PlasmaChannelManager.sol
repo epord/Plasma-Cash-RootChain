@@ -7,6 +7,7 @@ import "./State.sol";
 import "openzeppelin-solidity/contracts/drafts/Counters.sol";
 import "../Libraries/ChallengeLib.sol";
 import "../Libraries/ECVerify.sol";
+import "./PlasmaTurnGame.sol";
 
 
 //TODO add global timeout for channel
@@ -28,11 +29,10 @@ contract PlasmaCM {
     //Force Move Channel
     struct FMChannel {
         uint256 channelId;
-        bytes32 initialStateHash;
+        address channelType;
         uint256 stake;
         address[2] players;
-        bytes initialSignature;
-        address channelType;
+        bytes32 initialArgumentsHash;
         ChannelState state;
         Rules.Challenge forceMoveChallenge;
         ChallengeLib.Challenge plasmaChallenge;
@@ -55,15 +55,10 @@ contract PlasmaCM {
         address channelType,
         address opponent,
         uint stake,
-        State.StateStruct memory initialState,
-        bytes memory initialSignature
+        bytes memory initialGameAttributes
     ) public payable Payment(stake) hasDeposit {
 
-        Rules.validateStartState(initialState, msg.sender, opponent);
-
-        bytes32 initialStateHash = keccak256(abi.encode(initialState));
-        initialStateHash.ecverify(initialSignature, msg.sender);
-
+        ((PlasmaTurnGame)(channelType)).validateStartState(initialGameAttributes);
         channelCounter.increment();
 
         uint channelId = channelCounter.current();
@@ -79,11 +74,10 @@ contract PlasmaCM {
 
         channels[channelId] = FMChannel(
             channelId,
-            keccak256(abi.encode(initialState)),
+            channelType,
             stake,
             addresses,
-            initialSignature,
-            channelType,
+            keccak256(initialGameAttributes),
             ChannelState.INITIATED,
             rchallenge,
             cchallenge
@@ -95,21 +89,21 @@ contract PlasmaCM {
 
     function fundChannel(
         uint channelId,
-        State.StateStruct memory initialState
+        bytes memory initialGameAttributes
     ) public payable channelExists(channelId) hasDeposit {
         FMChannel storage channel = channels[channelId];
 
         require(channel.state == ChannelState.INITIATED, "Channel is already funded");
         require(channel.players[1] == msg.sender, "Sender is not participant of this channel");
         require(channel.stake == msg.value, "Payment must be equal to channel stake");
-        require(channel.initialStateHash == keccak256(abi.encode(initialState)), "Initial state does not match");
+        require(channel.initialArgumentsHash == keccak256(abi.encode(initialGameAttributes)), "Initial state does not match");
         channel.state = ChannelState.FUNDED;
 
         openChannels[msg.sender].increment();
 
         //TODO emit
         emit ChannelFunded(channel.channelId, channel.players[0], channel.players[1], channel.channelType);
-        initialState.eventStartState();
+        ((PlasmaTurnGame)(channel.channelType)).eventStartState(initialGameAttributes, channel.players[0], channel.players[1]);
     }
 
     function makeDeposit() external payable Payment(DEPOSIT_AMOUNT) {
