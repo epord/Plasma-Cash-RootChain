@@ -56,7 +56,7 @@ contract PlasmaCM {
         address opponent,
         uint stake,
         bytes memory initialGameAttributes
-    ) public payable Payment(stake) hasDeposit {
+    ) public payable Payment(stake) hasDeposited {
 
         ((PlasmaTurnGame)(channelType)).validateStartState(initialGameAttributes);
         channelCounter.increment();
@@ -90,7 +90,7 @@ contract PlasmaCM {
     function fundChannel(
         uint channelId,
         bytes memory initialGameAttributes
-    ) public payable channelExists(channelId) hasDeposit {
+    ) public payable channelExists(channelId) hasDeposited {
         FMChannel storage channel = channels[channelId];
 
         require(channel.state == ChannelState.INITIATED, "Channel is already funded");
@@ -111,7 +111,7 @@ contract PlasmaCM {
         deposited[msg.sender] = true;
     }
 
-    function retrievedDeposit() external payable hasDeposit {
+    function retrievedDeposit() external payable hasDeposited {
         require(openChannels[msg.sender].current() == 0, "Sender has an open channel");
         deposited[msg.sender] = false;
 
@@ -120,7 +120,7 @@ contract PlasmaCM {
 
     function forceFirstMove(
         uint channelId,
-        State.StateStruct memory initialState) public channelExists(channelId) hasDeposit {
+        State.StateStruct memory initialState) public channelExists(channelId) hasDeposited {
         channels[channelId].forceFirstMove(initialState, msg.sender);
     }
 
@@ -129,7 +129,7 @@ contract PlasmaCM {
         State.StateStruct memory fromState,
         State.StateStruct memory nextState,
         bytes[] memory signatures)
-    public channelExists(channelId) hasDeposit {
+    public channelExists(channelId) hasDeposited {
 
         channels[channelId].forceMove(fromState, nextState, msg.sender, signatures);
     }
@@ -138,7 +138,7 @@ contract PlasmaCM {
         uint channelId,
         State.StateStruct memory nextState,
         bytes memory signature)
-    public channelExists(channelId) hasDeposit {
+    public channelExists(channelId) hasDeposited {
 
         channels[channelId].respondWithMove(nextState, signature);
     }
@@ -148,7 +148,7 @@ contract PlasmaCM {
         State.StateStruct memory alternativeState,
         State.StateStruct memory nextState,
         bytes[] memory signatures)
-    public channelExists(channelId) hasDeposit {
+    public channelExists(channelId) hasDeposited {
 
         channels[channelId].alternativeRespondWithMove(alternativeState, nextState, signatures);
     }
@@ -158,7 +158,7 @@ contract PlasmaCM {
         State.StateStruct memory prevState,
         State.StateStruct memory lastState,
         bytes[] memory signatures)
-        public channelExists(channelId) hasDeposit {
+        public channelExists(channelId) hasDeposited {
 
         FMChannel storage channel = channels[channelId];
         channel.conclude(prevState, lastState, signatures);
@@ -179,6 +179,13 @@ contract PlasmaCM {
         //TODO emit
     }
 
+    function hasDeposit(address user) external view returns (bool) {
+        return deposited[user];
+    }
+
+    function getChannel(uint channelId) external view returns (FMChannel memory) {
+        return channels[channelId];
+    }
 
     ///
     //CHALLENGES
@@ -196,7 +203,7 @@ contract PlasmaCM {
         _;
     }
 
-    modifier hasDeposit() {
+    modifier hasDeposited() {
         require(deposited[msg.sender], "You must make a deposit to use the Game Channels");
         _;
     }
