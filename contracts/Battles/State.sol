@@ -15,7 +15,7 @@ library State {
         uint256 turnNum;
         bytes gameAttributes;       //Current Game State
     }
-    
+
     function game(StateStruct memory state) public pure returns (PlasmaTurnGame) {
         return (PlasmaTurnGame)(state.channelType);
     }
@@ -34,10 +34,6 @@ library State {
 
     function validateGameTransition(StateStruct memory state, StateStruct memory newState) public pure {
         game(state).validateTurnTransition(state.gameAttributes, state.turnNum, newState.gameAttributes);
-    }
-
-    function eventStartState(StateStruct memory initialState) public {
-        game(initialState).eventStartState(initialState.gameAttributes, initialState.participants[0], initialState.participants[1]);
     }
 
     //State is signed by mover

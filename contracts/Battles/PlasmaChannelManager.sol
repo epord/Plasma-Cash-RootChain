@@ -86,6 +86,7 @@ contract PlasmaCM {
 
 
         emit ChannelInitiated(channelId, msg.sender, opponent, channelType);
+        ((PlasmaTurnGame)(channelType)).eventRequestState(channelId, initialGameAttributes, msg.sender, opponent);
     }
 
     function fundChannel(
@@ -97,13 +98,13 @@ contract PlasmaCM {
         require(channel.state == ChannelState.INITIATED, "Channel is already funded");
         require(channel.players[1] == msg.sender, "Sender is not participant of this channel");
         require(channel.stake == msg.value, "Payment must be equal to channel stake");
-        require(channel.initialArgumentsHash == keccak256(abi.encode(initialGameAttributes)), "Initial state does not match");
+        require(channel.initialArgumentsHash == keccak256(initialGameAttributes), "Initial state does not match");
         channel.state = ChannelState.FUNDED;
 
         openChannels[msg.sender].increment();
 
         emit ChannelFunded(channel.channelId, channel.players[0], channel.players[1], channel.channelType);
-        ((PlasmaTurnGame)(channel.channelType)).eventStartState(initialGameAttributes, channel.players[0], channel.players[1]);
+        ((PlasmaTurnGame)(channel.channelType)).eventStartState(channelId, initialGameAttributes, channel.players[0], channel.players[1]);
     }
 
     function closeUnfundedChannel(uint channelId) external channelExists(channelId) hasDeposited {
@@ -125,7 +126,7 @@ contract PlasmaCM {
         deposited[msg.sender] = true;
     }
 
-    function retrievedDeposit() external payable hasDeposited {
+    function retrieveDeposit() external payable hasDeposited {
         require(openChannels[msg.sender].current() == 0, "Sender has an open channel");
         deposited[msg.sender] = false;
 

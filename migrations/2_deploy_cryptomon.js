@@ -2,6 +2,7 @@ var CryptoMon = artifacts.require("CryptoMons");
 var RootChain = artifacts.require("RootChain");
 var ValidatorManagerContract = artifacts.require("ValidatorManagerContract");
 var plasmaCM = artifacts.require("PlasmaCM");
+var RPSExample = artifacts.require("RPSExample");
 var adjudicators = artifacts.require("Adjudicators");
 var state = artifacts.require("State");
 
@@ -16,6 +17,7 @@ module.exports = function(deployer) {
         await deployer.link(adjudicators, plasmaCM);
         await deployer.link(state, plasmaCM);
         await deployer.deploy(plasmaCM);
+        await deployer.deploy(RPSExample);
       });
     });
   });

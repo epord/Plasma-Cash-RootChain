@@ -89,12 +89,12 @@ contract RPSExample is PlasmaTurnGame {
             (oddDecPL == 2  && oddDecOP == 1)
         ) {
             require(evenGTP == oddGTP + 1, "GamesToPlay should decrease");
-            require(evenScorePL == oddScorePL + 1, "Player Score increases due to win");
+            require(evenScorePL + 1 == oddScorePL , "Player Score increases due to win");
             require(evenScoreOP == oddScoreOP, "Opponent Score must say the same due to loss");
         } else {
             require(evenGTP == oddGTP + 1, "GamesToPlay should decrease");
             require(evenScorePL == oddScorePL, "Player Score must  say the same due to loss");
-            require(evenScoreOP == oddScoreOP + 1, "Opponent Score increases due to win");
+            require(evenScoreOP + 1 == oddScoreOP, "Opponent Score increases due to win");
         }
 
         if(!isFinal) {
@@ -105,6 +105,8 @@ contract RPSExample is PlasmaTurnGame {
     function validateOddToEven(bytes memory oddTurn, bytes memory evenTurn, bool isFirst) private pure {
         RLPReader.RLPItem[] memory even = evenTurn.toRlpItem().toList();
         RLPReader.RLPItem[] memory odd = oddTurn.toRlpItem().toList();
+
+        require(even.length == 5, "Invalid even turn RLP length");
 
         uint evenGTP = even[0].toUint();
         uint evenScorePL = even[1].toUint();
@@ -123,14 +125,11 @@ contract RPSExample is PlasmaTurnGame {
             oddNewHashDec = bytes32(odd[7].toUint());
         }
 
-        require(odd.length == 5, "Invalid ending turn RLP length");
-
         require(evenGTP == oddGTP, "GamesToPlay must stay de same");
         require(evenScorePL == oddScorePL, "Player score must stay de same");
         require(evenScoreOP == oddScoreOP, "Opponent score must stay de same");
         require(evenHashDec == oddNewHashDec, "Hash decision must stay de same");
         require(evenDecPl < 3, "Player decision must be 0, 1 or 2");
-
     }
 
     function winner(bytes memory state, uint turnNum, address player, address opponent) public pure returns (address) {
@@ -151,10 +150,18 @@ contract RPSExample is PlasmaTurnGame {
         return turnNum%2 == 0 ? player: opponent;
     }
 
-    event RPSStarted(address indexed player, address indexed opponent);
+    event RPSRequested(uint gameId, address indexed player, address indexed opponent, uint gamesToPlay);
+    event RPSStarted(uint gameId, address indexed player, address indexed opponent, uint gamesToPlay);
 
-    function eventStartState(bytes memory /*state*/, address player, address opponent) public {
-        emit RPSStarted(player, opponent);
+    //TODO add validator
+    function eventRequestState(uint gameId, bytes memory state, address player, address opponent) public {
+        uint gamesToPlay = state.toRlpItem().toList()[0].toUint();
+        emit RPSRequested(gameId, player, opponent, gamesToPlay);
+    }
+    //TODO add validator
+    function eventStartState(uint gameId, bytes memory state, address player, address opponent) public {
+        uint gamesToPlay = state.toRlpItem().toList()[0].toUint();
+        emit RPSStarted(gameId, player, opponent, gamesToPlay);
     }
 
 }

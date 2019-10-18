@@ -1,11 +1,12 @@
 pragma solidity ^0.5.2;
 pragma experimental ABIEncoderV2;
 
-contract PlasmaTurnGame {
-    function validateStartState(bytes memory /*state*/) public pure {  }
-    function validateTurnTransition(bytes memory /*oldstate*/, uint /*oldturnNum*/, bytes memory /*newstate*/) public pure { }
-    function winner(bytes memory /*state*/, uint /*turnNum*/, address /*player*/, address /*opponent*/) public pure returns (address) { return address(0); }
-    function isOver(bytes memory /*state*/, uint /*turnNum*/) public pure returns (bool) { return false; }
-    function mover(bytes memory /*state*/, uint /*turnNum*/, address /*player*/, address /*opponent*/) public pure returns (address) { return address(0); }
-    function eventStartState(bytes memory /*state*/, address /*player*/, address /*opponent*/) public {}
+interface PlasmaTurnGame {
+    function validateStartState(bytes calldata state) external pure;
+    function validateTurnTransition(bytes calldata oldstate, uint oldturnNum, bytes calldata newstate) external pure;
+    function winner(bytes calldata state, uint turnNum, address player, address opponent) external pure returns (address);
+    function isOver(bytes calldata state, uint turnNum) external pure returns (bool);
+    function mover(bytes calldata state, uint turnNum, address player, address opponent) external pure returns (address);
+    function eventRequestState(uint gameId, bytes calldata state, address player, address opponent) external;
+    function eventStartState(uint gameId, bytes calldata state, address player, address opponent) external;
 }
