@@ -16,6 +16,8 @@ contract PlasmaCM {
     //events
     event ChannelInitiated(uint channelId, address indexed creator, address indexed opponent, address channelType);
     event ChannelFunded(uint channelId, address indexed creator, address indexed opponent, address channelType);
+    event ChannelConcluded(uint channelId, address indexed creator, address indexed opponent, address channelType);
+    event ChannelWithdrawn(uint channelId, address indexed creator, address indexed opponent, address channelType);
 
     //events
 
@@ -50,13 +52,12 @@ contract PlasmaCM {
         revert("Please send funds using the FundChannel or makeDeposit method");
     }
 
-    //TODO close unfunded channel
     function initiateChannel(
         address channelType,
         address opponent,
         uint stake,
-        bytes memory initialGameAttributes
-    ) public payable Payment(stake) hasDeposited {
+        bytes calldata initialGameAttributes
+    ) external payable Payment(stake) hasDeposited {
 
         ((PlasmaTurnGame)(channelType)).validateStartState(initialGameAttributes);
         channelCounter.increment();
@@ -89,8 +90,8 @@ contract PlasmaCM {
 
     function fundChannel(
         uint channelId,
-        bytes memory initialGameAttributes
-    ) public payable channelExists(channelId) hasDeposited {
+        bytes calldata initialGameAttributes
+    ) external payable channelExists(channelId) hasDeposited {
         FMChannel storage channel = channels[channelId];
 
         require(channel.state == ChannelState.INITIATED, "Channel is already funded");
@@ -101,9 +102,22 @@ contract PlasmaCM {
 
         openChannels[msg.sender].increment();
 
-        //TODO emit
         emit ChannelFunded(channel.channelId, channel.players[0], channel.players[1], channel.channelType);
         ((PlasmaTurnGame)(channel.channelType)).eventStartState(initialGameAttributes, channel.players[0], channel.players[1]);
+    }
+
+    function closeUnfundedChannel(uint channelId) external channelExists(channelId) hasDeposited {
+        FMChannel storage channel = channels[channelId];
+
+        require(channel.state == ChannelState.INITIATED, "Channel is already funded");
+        require(channel.players[0] == msg.sender, "Sender is not creator of this channel");
+
+        channel.state = ChannelState.WITHDRAWN;
+        openChannels[channel.players[0]].decrement();
+
+        msg.sender.transfer(channel.stake);
+        emit ChannelConcluded(channelId, channel.players[0], channel.players[1], channel.channelType);
+        emit ChannelWithdrawn(channelId, channel.players[0], channel.players[1], channel.channelType);
     }
 
     function makeDeposit() external payable Payment(DEPOSIT_AMOUNT) {
@@ -163,7 +177,7 @@ contract PlasmaCM {
         FMChannel storage channel = channels[channelId];
         channel.conclude(prevState, lastState, signatures);
         channel.state = ChannelState.CLOSED;
-        //TODO emit
+        emit ChannelConcluded(channelId, channel.players[0], channel.players[1], channel.channelType);
     }
 
     function withdraw(uint channelId) external channelExists(channelId) {
@@ -176,7 +190,7 @@ contract PlasmaCM {
         openChannels[channel.players[1]].decrement();
 
         msg.sender.transfer(channel.stake * 2);
-        //TODO emit
+        emit ChannelWithdrawn(channelId, channel.players[0], channel.players[1], channel.channelType);
     }
 
     function hasDeposit(address user) external view returns (bool) {
