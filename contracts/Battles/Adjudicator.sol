@@ -10,7 +10,6 @@ import "./PlasmaChannelManager.sol";
 library Adjudicators {
 
     using State for State.StateStruct;
-    using Adjudicators for PlasmaCM.FMChannel;
 
     uint constant CHALLENGE_DURATION = 10 * 1 minutes;
 
@@ -141,27 +140,27 @@ library Adjudicators {
     }
 
     function expiredChallengePresent(PlasmaCM.FMChannel storage channel) public view returns (bool) {
-        return channel.currentChallengePresent() && !channel.activeChallengePresent();
+        return currentChallengePresent(channel) && !activeChallengePresent(channel);
     }
 
     // Modifiers
     modifier withCurrentChallenge(PlasmaCM.FMChannel storage channel) {
-        require(channel.currentChallengePresent(), "Current challenge must be present");
+        require(currentChallengePresent(channel), "Current challenge must be present");
         _;
     }
 
     modifier withoutCurrentChallenge(PlasmaCM.FMChannel storage channel) {
-        require(!channel.currentChallengePresent(), "current challenge must not be present");
+        require(!currentChallengePresent(channel), "current challenge must not be present");
         _;
     }
 
     modifier withActiveChallenge(PlasmaCM.FMChannel storage channel) {
-        require(channel.activeChallengePresent(), "active challenge must be present");
+        require(activeChallengePresent(channel), "active challenge must be present");
         _;
     }
 
     modifier withoutActiveChallenge(PlasmaCM.FMChannel storage channel) {
-        require(!channel.activeChallengePresent(), "active challenge must be present");
+        require(!activeChallengePresent(channel), "active challenge must be present");
         _;
     }
 
