@@ -176,7 +176,11 @@ contract PlasmaCM {
         public channelExists(channelId) hasDeposited {
 
         FMChannel storage channel = channels[channelId];
-        channel.conclude(prevState, lastState, signatures);
+
+        if(!channel.expiredChallengePresent()) {
+            channel.conclude(prevState, lastState, signatures);
+        }
+
         channel.state = ChannelState.CLOSED;
         emit ChannelConcluded(channelId, channel.players[0], channel.players[1], channel.channelType);
     }

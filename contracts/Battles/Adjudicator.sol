@@ -73,6 +73,7 @@ library Adjudicators {
     withActiveChallenge(channel)
     whenState(channel, PlasmaCM.ChannelState.FUNDED)
     {
+        //TODO check if signature[0] is empty
         Rules.validateAlternativeRespondWithMove(channel.forceMoveChallenge.state, alternativeState, nextState, signatures);
         //TODO check if this should create a new challenge
         cancelCurrentChallenge(channel);
@@ -103,7 +104,6 @@ library Adjudicators {
     whenState(channel, PlasmaCM.ChannelState.FUNDED)
     matchId(channel, penultimateState)
     {
-
         Rules.validateSignedTransition(penultimateState, ultimateState, signatures);
         require(ultimateState.isOver(), "Ultimate State must be a final state");
 
@@ -128,11 +128,11 @@ library Adjudicators {
     }
 
     function cancelCurrentChallenge(PlasmaCM.FMChannel storage channel) private{
-        channel.forceMoveChallenge.expirationTime = 0;
+        channel.forceMoveChallenge.state.channelId = 0;
     }
 
     function currentChallengePresent(PlasmaCM.FMChannel storage channel) public view returns (bool) {
-        return channel.forceMoveChallenge.expirationTime > 0;
+        return channel.forceMoveChallenge.state.channelId > 0;
     }
 
     function activeChallengePresent(PlasmaCM.FMChannel storage channel) public view returns (bool) {
@@ -160,7 +160,7 @@ library Adjudicators {
     }
 
     modifier withoutActiveChallenge(PlasmaCM.FMChannel storage channel) {
-        require(!activeChallengePresent(channel), "active challenge must be present");
+        require(!activeChallengePresent(channel), "active challenge must not be present");
         _;
     }
 

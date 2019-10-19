@@ -39,8 +39,8 @@ library State {
     //State is signed by mover
     function requireSignature(StateStruct memory state, bytes memory signature) public pure {
         require(
-            keccak256(abi.encode(state)).ecverify(signature, mover(state)),
-            "mover must have signed state"
+            keccak256(abi.encodePacked(state.channelId, state.channelType, state.participants, state.turnNum, state.gameAttributes))
+                .ecverify(signature, mover(state)), "mover must have signed state"
         );
     }
 }

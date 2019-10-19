@@ -43,10 +43,10 @@ contract RPSExample is PlasmaTurnGame {
         RLPReader.RLPItem[] memory start = startState.toRlpItem().toList();
         RLPReader.RLPItem[] memory first = firstTurn.toRlpItem().toList();
 
-        require(first.length == 3, "Invalid first turn RLP length");
+        require(first.length == 4, "Invalid first turn RLP length");
         require(start[0].toUint() == first[0].toUint(), "GamesToPlay should not change on first turn");
         require(first[1].toUint() == 0 && first[2].toUint() == 0, "Score should not change on first turn");
-        require(first[2].toUint() != 0, "Invalid hash");
+        require(first[3].toUint() != 0, "Invalid hash");
     }
 
     function validateEvenToOdd(bytes memory evenTurn, bytes memory oddTurn, bool isFinal) private pure {
@@ -115,12 +115,12 @@ contract RPSExample is PlasmaTurnGame {
         uint evenDecPl   = even[4].toUint();
 
         uint oddGTP = odd[0].toUint();
-        uint oddScoreOP = odd[1].toUint();
-        uint oddScorePL = odd[2].toUint();
+        uint oddScorePL = odd[1].toUint();
+        uint oddScoreOP = odd[2].toUint();
         bytes32 oddNewHashDec;
 
         if(isFirst) {
-            oddNewHashDec = bytes32(odd[4].toUint());
+            oddNewHashDec = bytes32(odd[3].toUint());
         } else {
             oddNewHashDec = bytes32(odd[7].toUint());
         }
