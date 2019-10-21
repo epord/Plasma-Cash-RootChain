@@ -28,7 +28,7 @@ library Rules {
     function validateTransition(
         State.StateStruct memory fromState,
         State.StateStruct memory toState
-    ) internal pure {
+    ) internal view {
         require(
             toState.channelId == fromState.channelId,
             "Invalid transition: channelId must match on toState"
@@ -56,7 +56,7 @@ library Rules {
     function validGameTransition(
         State.StateStruct memory fromState,
         State.StateStruct memory toState
-    ) internal pure {
+    ) internal view {
         fromState.validateGameTransition(toState);
     }
 
@@ -64,7 +64,7 @@ library Rules {
         State.StateStruct memory fromState,
         State.StateStruct memory toState,
         bytes[] memory signatures
-    ) internal pure {
+    ) internal view {
         // states must be signed by the appropriate participant
         fromState.requireSignature(signatures[0]);
         toState.requireSignature(signatures[1]);
@@ -93,7 +93,7 @@ library Rules {
         State.StateStruct memory challengeState,
         State.StateStruct memory nextState,
         bytes memory signature
-    ) internal pure {
+    ) internal view {
         // check that the challengee's signature matches
         nextState.requireSignature(signature);
         validateTransition(challengeState, nextState);
@@ -104,7 +104,7 @@ library Rules {
         State.StateStruct memory alternativeState,
         State.StateStruct memory nextState,
         bytes[] memory signatures
-    ) internal pure {
+    ) internal view {
 
         // checking the alternative state:
         require(

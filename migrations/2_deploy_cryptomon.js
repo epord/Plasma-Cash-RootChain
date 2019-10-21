@@ -5,6 +5,8 @@ var plasmaCM = artifacts.require("PlasmaCM");
 var RPSExample = artifacts.require("RPSExample");
 var adjudicators = artifacts.require("Adjudicators");
 var state = artifacts.require("State");
+var BattleDamageCalculator = artifacts.require("BattleDamageCalculator");
+var CryptoMonBattles = artifacts.require("CryptoMonBattles");
 
 //Cryptomon <- RootChain <- VMC
 module.exports = function(deployer) {
@@ -17,7 +19,9 @@ module.exports = function(deployer) {
         await deployer.link(adjudicators, plasmaCM);
         await deployer.link(state, plasmaCM);
         await deployer.deploy(plasmaCM);
-        await deployer.deploy(RPSExample);
+        await deployer.deploy(BattleDamageCalculator);
+        await deployer.link(BattleDamageCalculator, CryptoMonBattles);
+        await deployer.deploy(CryptoMonBattles, RootChain.address, CryptoMon.address);
       });
     });
   });

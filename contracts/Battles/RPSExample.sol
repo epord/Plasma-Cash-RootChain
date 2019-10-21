@@ -21,7 +21,7 @@ contract RPSExample is PlasmaTurnGame {
 
     //Rock 0, Paper 1, Scissor 2
 
-    function validateStartState(bytes memory state) public pure {
+    function validateStartState(bytes memory state) public view {
         RLPReader.RLPItem[] memory start = state.toRlpItem().toList();
         require(start.length == 3, "Invalid RLP length");
         require(start[0].toUint()%2 == 1 , "GamesToPlay must greater be odd number");
@@ -29,7 +29,7 @@ contract RPSExample is PlasmaTurnGame {
 
     }
 
-    function validateTurnTransition(bytes memory oldState, uint turnNum, bytes memory newState) public pure {
+    function validateTurnTransition(bytes memory oldState, uint turnNum, bytes memory newState) public view {
         if(turnNum == 0) {
             validateInitialTransition(oldState, newState);
         } else if(turnNum%2 == 0) {

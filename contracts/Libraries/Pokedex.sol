@@ -45,14 +45,14 @@ contract Pokedex {
     }
 
     struct PokemonData {
-        uint8 Id;
+        uint8 id;
         Type type1;
         Type type2;
         Stats base;
     }
 
     struct Pokemon {
-        uint8 Id;
+        uint8 id;
         Gender gender;
         bool isShiny;
         Stats IVs;
@@ -258,5 +258,4 @@ contract Pokedex {
     function getPokemonData(uint8 id) public view returns(PokemonData memory) {
         return pokedex[id];
     }
-
 }

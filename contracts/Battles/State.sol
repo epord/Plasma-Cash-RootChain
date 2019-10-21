@@ -32,7 +32,7 @@ library State {
         return game(state).isOver(state.gameAttributes, state.turnNum);
     }
 
-    function validateGameTransition(StateStruct memory state, StateStruct memory newState) public pure {
+    function validateGameTransition(StateStruct memory state, StateStruct memory newState) public view {
         game(state).validateTurnTransition(state.gameAttributes, state.turnNum, newState.gameAttributes);
     }
 
