@@ -10,6 +10,7 @@ library BattleDamageCalculator {
 
     uint constant ATTACK_POWER = 50;
     uint constant CONFUSED_ATTACK_POWER = 25;
+    uint constant STATUS_HIT_CHANCE = 0xBE;
     uint constant LEVEL = 100;
 
     uint constant FIRE_ATK_REDUC    = 80;
@@ -38,6 +39,7 @@ library BattleDamageCalculator {
 
     uint8 constant BONUS_EFFECTIVE = 150;
     uint8 constant BONUS_INEFFECTIVE = 75;
+    uint8 constant SINGLE_TYPE_BOOST = 120;
 
     uint constant decimals = 1000000;
 
@@ -45,6 +47,7 @@ library BattleDamageCalculator {
         RECHARGE,
         CLEANSE,
         PROTECT,
+        SHIELD_BREAK,
         ATK1,
         SPATK1,
         STATUS1,
@@ -130,6 +133,7 @@ library BattleDamageCalculator {
         if(state.player.move == Moves.RECHARGE) {
             require(state.player.charges < 3, "Player recharge not possible when over 3");
             state.player.charges = state.player.charges + 1;
+            return state;
         }
 
         if(usesFirstType(state.player.move)) {
@@ -148,6 +152,11 @@ library BattleDamageCalculator {
             bool hit = willHit(state.player, state.opponent, hitR);
             if(hit) {
                 uint damage = calculateEffectiveDamage(state.player, state.opponent, criticalR, jitterR);
+
+                if(state.player.data.type2 == Pokedex.Type.Unknown) {
+                    damage = damage * SINGLE_TYPE_BOOST / 100;
+                }
+
                 if(state.opponent.hp < damage) {
                     state.opponent.hp = 0;
                 } else {
@@ -166,29 +175,61 @@ library BattleDamageCalculator {
                     }
                 }
             }
+
+            return state;
+        }
+
+        if(state.player.move == Moves.SHIELD_BREAK) {
+            if(state.opponent.move == Moves.PROTECT) {
+                uint shieldBreakDmg = state.opponent.cryptoMon.stats.hp / 3;
+                if(state.opponent.hp < shieldBreakDmg) {
+                    state.opponent.hp = 0;
+                } else {
+                    state.opponent.hp = state.opponent.hp - shieldBreakDmg;
+                }
+
+                return state;
+            } else {
+                //No returning charge cause shield break should only be used on Protect spam
+                return state;
+            }
         }
 
         if(state.player.move == Moves.STATUS1) {
-            canStatus(state);
-            state.opponent.status1 = true;
+            (bytes32 random, uint8 statusHit) = getNextR(state.random);
+            state.random = random;
+            if(canStatus(state, statusHit)){
+                state.opponent.status1 = true;
+            } else {
+                state.player.charges = state.player.charges + 1;
+            }
+            return state;
         }
 
         if(state.player.move == Moves.STATUS2) {
-            canStatus(state);
-            state.opponent.status2 = true;
+            (bytes32 random, uint8 statusHit) = getNextR(state.random);
+            state.random = random;
+            if(canStatus(state, statusHit)){
+                state.opponent.status2 = true;
+            } else {
+                state.player.charges = state.player.charges + 1;
+            }
+            return state;
         }
 
         if(state.player.move == Moves.CLEANSE) {
             state.player.status1 = false;
             state.player.status2 = false;
+            return state;
         }
 
         return state;
     }
 
-    function canStatus(BattleState memory state) private pure {
+    function canStatus(BattleState memory state, uint8 random) private pure returns (bool) {
         if(state.player.status1) require(state.opponent.data.type1 != Pokedex.Type.Ice, "Cant use Status while Froze");
         if(state.player.status2) require(state.opponent.data.type2 != Pokedex.Type.Ice, "Cant use Status while Froze");
+        return random < STATUS_HIT_CHANCE;
     }
 
     function calculateEffectiveDamage(
