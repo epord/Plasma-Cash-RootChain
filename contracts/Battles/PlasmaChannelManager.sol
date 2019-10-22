@@ -13,20 +13,19 @@ import "./PlasmaTurnGame.sol";
 //TODO add global timeout for channel
 //Plasma Channel Manager
 contract PlasmaCM {
-    //events
-    event ChannelInitiated(uint channelId, address indexed creator, address indexed opponent, address channelType);
-    event ChannelFunded(uint channelId, address indexed creator, address indexed opponent, address channelType);
-    event ChannelConcluded(uint channelId, address indexed creator, address indexed opponent, address channelType);
-    event ChannelWithdrawn(uint channelId, address indexed creator, address indexed opponent, address channelType);
-
-    //events
-
     using Adjudicators for FMChannel;
     using Counters for Counters.Counter;
     using ECVerify for bytes32;
     using State for State.StateStruct;
 
     enum ChannelState { INITIATED, FUNDED, SUSPENDED, CLOSED, WITHDRAWN }
+
+    //events
+    event ChannelInitiated(uint channelId, address indexed creator, address indexed opponent, address channelType);
+    event ChannelFunded(uint indexed channelId, address indexed creator, address indexed opponent, address channelType);
+    event ChannelConcluded(uint indexed channelId, address indexed creator, address indexed opponent, address channelType);
+    event ChannelWithdrawn(uint indexed channelId, address indexed creator, address indexed opponent, address channelType);
+    event ForceMoveResponded(uint indexed channelId, State.StateStruct nextState, bytes signature);
 
     //Force Move Channel
     struct FMChannel {
@@ -154,8 +153,9 @@ contract PlasmaCM {
         State.StateStruct memory nextState,
         bytes memory signature)
     public channelExists(channelId) hasDeposited {
-
-        channels[channelId].respondWithMove(nextState, signature);
+        FMChannel storage channel = channels[channelId];
+        channel.respondWithMove(nextState, signature);
+        emit ForceMoveResponded(channelId, nextState, signature);
     }
 
     function alternativeRespondWithMove(
