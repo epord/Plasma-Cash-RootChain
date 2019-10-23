@@ -73,9 +73,8 @@ library Adjudicators {
     withActiveChallenge(channel)
     whenState(channel, PlasmaCM.ChannelState.FUNDED)
     {
-        //TODO check if signature[0] is empty
+        //AlternativeState will never be the first state since the hash vaidate in the forceMoveChannel
         Rules.validateAlternativeRespondWithMove(channel.forceMoveChallenge.state, alternativeState, nextState, signatures);
-        //TODO check if this should create a new challenge
         cancelCurrentChallenge(channel);
     }
 

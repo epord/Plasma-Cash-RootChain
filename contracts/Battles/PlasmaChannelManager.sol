@@ -13,19 +13,20 @@ import "./PlasmaTurnGame.sol";
 //TODO add global timeout for channel
 //Plasma Channel Manager
 contract PlasmaCM {
+    //events
+    event ChannelInitiated(uint channelId, address indexed creator, address indexed opponent, address channelType);
+    event ChannelFunded(uint channelId, address indexed creator, address indexed opponent, address channelType);
+    event ChannelConcluded(uint channelId, address indexed creator, address indexed opponent, address channelType);
+    event ForceMoveResponded(uint indexed channelId, State.StateStruct nextState, bytes signature);
+
+    //events
+
     using Adjudicators for FMChannel;
     using Counters for Counters.Counter;
     using ECVerify for bytes32;
     using State for State.StateStruct;
 
-    enum ChannelState { INITIATED, FUNDED, SUSPENDED, CLOSED, WITHDRAWN }
-
-    //events
-    event ChannelInitiated(uint channelId, address indexed creator, address indexed opponent, address channelType);
-    event ChannelFunded(uint indexed channelId, address indexed creator, address indexed opponent, address channelType);
-    event ChannelConcluded(uint indexed channelId, address indexed creator, address indexed opponent, address channelType);
-    event ChannelWithdrawn(uint indexed channelId, address indexed creator, address indexed opponent, address channelType);
-    event ForceMoveResponded(uint indexed channelId, State.StateStruct nextState, bytes signature);
+    enum ChannelState { INITIATED, FUNDED, CLOSED, SUSPENDED }
 
     //Force Move Channel
     struct FMChannel {
@@ -40,12 +41,11 @@ contract PlasmaCM {
     }
 
     mapping (uint => FMChannel) channels;
+    mapping (address => uint) funds;
 
     Counters.Counter channelCounter;
 
-    uint256 constant DEPOSIT_AMOUNT = 0.1 ether;
-    mapping (address => Counters.Counter) openChannels;
-    mapping (address => bool) deposited;
+    uint256 constant MINIMAL_BET = 0.01 ether;
 
     function () external payable {
         revert("Please send funds using the FundChannel or makeDeposit method");
@@ -56,7 +56,7 @@ contract PlasmaCM {
         address opponent,
         uint stake,
         bytes calldata initialGameAttributes
-    ) external payable Payment(stake) hasDeposited {
+    ) external payable Payment(stake) {
 
         ((PlasmaTurnGame)(channelType)).validateStartState(initialGameAttributes);
         channelCounter.increment();
@@ -66,8 +66,6 @@ contract PlasmaCM {
         address[2] memory addresses;
         addresses[0] = msg.sender;
         addresses[1] = opponent;
-
-        openChannels[msg.sender].increment();
 
         Rules.Challenge memory rchallenge;
         ChallengeLib.Challenge memory cchallenge;
@@ -91,7 +89,7 @@ contract PlasmaCM {
     function fundChannel(
         uint channelId,
         bytes calldata initialGameAttributes
-    ) external payable channelExists(channelId) hasDeposited {
+    ) external payable channelExists(channelId) {
         FMChannel storage channel = channels[channelId];
 
         require(channel.state == ChannelState.INITIATED, "Channel is already funded");
@@ -100,41 +98,25 @@ contract PlasmaCM {
         require(channel.initialArgumentsHash == keccak256(initialGameAttributes), "Initial state does not match");
         channel.state = ChannelState.FUNDED;
 
-        openChannels[msg.sender].increment();
-
         emit ChannelFunded(channel.channelId, channel.players[0], channel.players[1], channel.channelType);
         ((PlasmaTurnGame)(channel.channelType)).eventStartState(channelId, initialGameAttributes, channel.players[0], channel.players[1]);
     }
 
-    function closeUnfundedChannel(uint channelId) external channelExists(channelId) hasDeposited {
+    function closeUnfundedChannel(uint channelId) external channelExists(channelId) {
         FMChannel storage channel = channels[channelId];
 
         require(channel.state == ChannelState.INITIATED, "Channel is already funded");
         require(channel.players[0] == msg.sender, "Sender is not creator of this channel");
 
-        channel.state = ChannelState.WITHDRAWN;
-        openChannels[channel.players[0]].decrement();
+        channel.state = ChannelState.CLOSED;
 
-        msg.sender.transfer(channel.stake);
+        funds[msg.sender] = funds[msg.sender] + channel.stake;
         emit ChannelConcluded(channelId, channel.players[0], channel.players[1], channel.channelType);
-        emit ChannelWithdrawn(channelId, channel.players[0], channel.players[1], channel.channelType);
-    }
-
-    function makeDeposit() external payable Payment(DEPOSIT_AMOUNT) {
-        require(!deposited[msg.sender], "Sender already did a deposit");
-        deposited[msg.sender] = true;
-    }
-
-    function retrieveDeposit() external payable hasDeposited {
-        require(openChannels[msg.sender].current() == 0, "Sender has an open channel");
-        deposited[msg.sender] = false;
-
-        msg.sender.transfer(DEPOSIT_AMOUNT);
     }
 
     function forceFirstMove(
         uint channelId,
-        State.StateStruct memory initialState) public channelExists(channelId) hasDeposited {
+        State.StateStruct memory initialState) public channelExists(channelId) isAllowed(channelId) {
         channels[channelId].forceFirstMove(initialState, msg.sender);
     }
 
@@ -143,8 +125,7 @@ contract PlasmaCM {
         State.StateStruct memory fromState,
         State.StateStruct memory nextState,
         bytes[] memory signatures)
-    public channelExists(channelId) hasDeposited {
-
+    public channelExists(channelId) isAllowed(channelId) {
         channels[channelId].forceMove(fromState, nextState, msg.sender, signatures);
     }
 
@@ -152,7 +133,7 @@ contract PlasmaCM {
         uint channelId,
         State.StateStruct memory nextState,
         bytes memory signature)
-    public channelExists(channelId) hasDeposited {
+    public channelExists(channelId) {
         FMChannel storage channel = channels[channelId];
         channel.respondWithMove(nextState, signature);
         emit ForceMoveResponded(channelId, nextState, signature);
@@ -163,8 +144,7 @@ contract PlasmaCM {
         State.StateStruct memory alternativeState,
         State.StateStruct memory nextState,
         bytes[] memory signatures)
-    public channelExists(channelId) hasDeposited {
-
+    public channelExists(channelId) {
         channels[channelId].alternativeRespondWithMove(alternativeState, nextState, signatures);
     }
 
@@ -173,33 +153,32 @@ contract PlasmaCM {
         State.StateStruct memory prevState,
         State.StateStruct memory lastState,
         bytes[] memory signatures)
-        public channelExists(channelId) hasDeposited {
+        public channelExists(channelId) {
 
         FMChannel storage channel = channels[channelId];
+        require(channel.state == ChannelState.FUNDED, "Channel must be funded to conclude it");
 
         if(!channel.expiredChallengePresent()) {
             channel.conclude(prevState, lastState, signatures);
         }
 
+        //should never fail
+        require(channel.expiredChallengePresent(), "Winner not correctly decided");
+
         channel.state = ChannelState.CLOSED;
+        funds[channel.forceMoveChallenge.winner] += channel.stake * 2;
         emit ChannelConcluded(channelId, channel.players[0], channel.players[1], channel.channelType);
     }
 
-    function withdraw(uint channelId) external channelExists(channelId) {
-
-        FMChannel storage channel = channels[channelId];
-        require(channel.state == ChannelState.CLOSED, "Channel must be closed");
-        channel.state = ChannelState.WITHDRAWN;
-
-        openChannels[channel.players[0]].decrement();
-        openChannels[channel.players[1]].decrement();
-
-        msg.sender.transfer(channel.stake * 2);
-        emit ChannelWithdrawn(channelId, channel.players[0], channel.players[1], channel.channelType);
+    function withdraw() public {
+        require(funds[msg.sender] > 0, "Sender has no funds");
+        uint value = funds[msg.sender];
+        funds[msg.sender] = 0;
+        msg.sender.transfer(value);
     }
 
-    function hasDeposit(address user) external view returns (bool) {
-        return deposited[user];
+    function getFunds(address user) external view returns (uint) {
+        return funds[user];
     }
 
     function getChannel(uint channelId) external view returns (FMChannel memory) {
@@ -222,8 +201,9 @@ contract PlasmaCM {
         _;
     }
 
-    modifier hasDeposited() {
-        require(deposited[msg.sender], "You must make a deposit to use the Game Channels");
+    modifier isAllowed(uint channelId) {
+        require(channels[channelId].players[0] == msg.sender || channels[channelId].players[1] == msg.sender, "The sender is not involved in the channel");
         _;
     }
+
 }
