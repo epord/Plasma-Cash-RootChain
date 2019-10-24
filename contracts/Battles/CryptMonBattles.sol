@@ -33,7 +33,7 @@ contract CryptoMonBattles is PlasmaTurnGame, Ownable {
     //              |               |               | 13 DecisionOp        | DecisionOp
     //              |               |               | 14 SaltOP            | SaltOP
     //              |               |               | 15 nextHashDecision  |
-    
+
     enum Battle {
         CryptoMonPL,
         HPPL,
@@ -47,10 +47,10 @@ contract CryptoMonBattles is PlasmaTurnGame, Ownable {
         ChargeOP,
         HashDecision,
         DecisionPL,
-        SaltPL,            
-        DecisionOP,        
-        SaltOP,            
-        NextHashDecision  
+        SaltPL,
+        DecisionOP,
+        SaltOP,
+        NextHashDecision
     }
 
     RootChain plasma;
@@ -108,7 +108,7 @@ contract CryptoMonBattles is PlasmaTurnGame, Ownable {
         require(first[uint(Battle.Status2OP)].toBoolean()== second[uint(Battle.Status2OP)].toBoolean() , "Opponent Status2 must stay same");
         require(first[uint(Battle.ChargeOP)].toUint()    == second[uint(Battle.ChargeOP)].toUint()     , "Opponent charges must stay same");
     }
-    
+
     function validateInitialTransition(bytes memory startState, bytes memory firstTurn) public pure {
         RLPReader.RLPItem[] memory start = startState.toRlpItem().toList();
         RLPReader.RLPItem[] memory first = firstTurn.toRlpItem().toList();
@@ -259,18 +259,22 @@ contract CryptoMonBattles is PlasmaTurnGame, Ownable {
         return cryptomons.getCryptomon(cryptoMonId);
     }
 
-    event CryptoMonBattleRequested(uint gameId, address indexed player, uint indexed CryptoMon);
-    event CryptoMonBattleStarted(uint gameId, address indexed player, uint indexed CryptoMon);
+    event CryptoMonBattleRequested(uint indexed gameId, address indexed player, uint indexed CryptoMon);
+    event CryptoMonBattleStarted(uint indexed gameId, address indexed player, uint indexed CryptoMon);
 
     function eventRequestState(uint gameId, bytes memory state, address player, address opponent) public isApproved(msg.sender) {
-        uint CryptoMonPL = state.toRlpItem().toList()[uint(Battle.CryptoMonPL)].toUint();
-        uint CryptoMonOP  = state.toRlpItem().toList()[uint(Battle.CryptoMonOP)].toUint();
+        RLPReader.RLPItem[] memory decoded = state.toRlpItem().toList();
+        uint CryptoMonPL = decoded[uint(Battle.CryptoMonPL)].toUint();
+        uint CryptoMonOP = decoded[uint(Battle.CryptoMonOP)].toUint();
+
         emit CryptoMonBattleRequested(gameId, player, CryptoMonPL);
         emit CryptoMonBattleRequested(gameId, opponent, CryptoMonOP);
     }
     function eventStartState(uint gameId, bytes memory state, address player, address opponent) public isApproved(msg.sender) {
-        uint CryptoMonPL = state.toRlpItem().toList()[uint(Battle.CryptoMonPL)].toUint();
-        uint CryptoMonOP  = state.toRlpItem().toList()[uint(Battle.CryptoMonOP)].toUint();
+        RLPReader.RLPItem[] memory decoded = state.toRlpItem().toList();
+        uint CryptoMonPL = decoded[uint(Battle.CryptoMonPL)].toUint();
+        uint CryptoMonOP = decoded[uint(Battle.CryptoMonOP)].toUint();
+
         emit CryptoMonBattleStarted(gameId, player, CryptoMonPL);
         emit CryptoMonBattleStarted(gameId, opponent, CryptoMonOP);
     }

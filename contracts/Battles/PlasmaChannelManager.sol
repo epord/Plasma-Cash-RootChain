@@ -15,7 +15,7 @@ import "./PlasmaTurnGame.sol";
 contract PlasmaCM {
     //events
     event ChannelInitiated(uint channelId, address indexed creator, address indexed opponent, address channelType);
-    event ChannelFunded(uint channelId, address indexed creator, address indexed opponent, address channelType);
+    event ChannelFunded(uint channelId, address indexed creator, address indexed opponent, address channelType, bytes initiaState);
     event ChannelConcluded(uint channelId, address indexed creator, address indexed opponent, address channelType);
     event ForceMoveResponded(uint indexed channelId, State.StateStruct nextState, bytes signature);
 
@@ -98,7 +98,7 @@ contract PlasmaCM {
         require(channel.initialArgumentsHash == keccak256(initialGameAttributes), "Initial state does not match");
         channel.state = ChannelState.FUNDED;
 
-        emit ChannelFunded(channel.channelId, channel.players[0], channel.players[1], channel.channelType);
+        emit ChannelFunded(channel.channelId, channel.players[0], channel.players[1], channel.channelType, initialGameAttributes);
         ((PlasmaTurnGame)(channel.channelType)).eventStartState(channelId, initialGameAttributes, channel.players[0], channel.players[1]);
     }
 
