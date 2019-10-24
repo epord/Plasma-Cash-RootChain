@@ -10,12 +10,11 @@ import "../Libraries/ECVerify.sol";
 import "./PlasmaTurnGame.sol";
 
 
-//TODO add global timeout for channel
 //Plasma Channel Manager
 contract PlasmaCM {
     //events
     event ChannelInitiated(uint channelId, address indexed creator, address indexed opponent, address channelType);
-    event ChannelFunded(uint channelId, address indexed creator, address indexed opponent, address channelType, bytes initiaState);
+    event ChannelFunded(uint channelId, address indexed creator, address indexed opponent, address channelType, bytes initialState);
     event ChannelConcluded(uint channelId, address indexed creator, address indexed opponent, address channelType);
     event ForceMoveResponded(uint indexed channelId, State.StateStruct nextState, bytes signature);
 
