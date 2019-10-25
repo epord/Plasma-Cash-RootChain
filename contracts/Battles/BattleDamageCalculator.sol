@@ -424,11 +424,11 @@ library BattleDamageCalculator {
             uint8 odds1 = getMissOdds(otherState.data.type1, state.cryptoMon.gender == otherState.cryptoMon.gender);
             uint8 odds2 = getMissOdds(otherState.data.type2, state.cryptoMon.gender == otherState.cryptoMon.gender);
             uint8 odds = uint8((uint(odds1) * decimals / 255) *  (uint(odds2) * decimals / 255) * 255 / (decimals * decimals));
-            return random < odds;
+            return random > odds;
         } else if(state.status1) {
-            return random < getMissOdds(otherState.data.type1, state.cryptoMon.gender == otherState.cryptoMon.gender);
+            return random > getMissOdds(otherState.data.type1, state.cryptoMon.gender == otherState.cryptoMon.gender);
         } else if(state.status2) {
-            return random < getMissOdds(otherState.data.type2, state.cryptoMon.gender == otherState.cryptoMon.gender);
+            return random > getMissOdds(otherState.data.type2, state.cryptoMon.gender == otherState.cryptoMon.gender);
         } else {
             return true;
         }
