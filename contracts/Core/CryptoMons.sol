@@ -52,7 +52,7 @@ contract CryptoMons is ERC721, Ownable, Pokedex {
         cryptomons[tokenCount.current()] = generateNewPokemon();
     }
 
-    function getCryptomon(uint8 id) public view returns (Pokemon memory) {
+    function getCryptomon(uint256 id) public view returns (Pokemon memory) {
         return cryptomons[id];
     }
 
