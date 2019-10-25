@@ -8,8 +8,8 @@ import "../Libraries/Pokedex.sol";
 
 library BattleDamageCalculator {
 
-    uint constant ATTACK_POWER = 50;
-    uint constant CONFUSED_ATTACK_POWER = 25;
+    uint constant ATTACK_POWER = 2;
+    uint constant CONFUSED_ATTACK_POWER = 1;
     uint constant STATUS_HIT_CHANCE = 0xBE;
     uint constant LEVEL = 100;
 
@@ -255,7 +255,7 @@ library BattleDamageCalculator {
             revert("Attacking move should be an attacking move");
         }
 
-        bool isCritical = criticalR > getCriticalHitThreshold(state, otherState);
+        bool isCritical = criticalR < getCriticalHitThreshold(state, otherState);
         if(isCritical) damage = damage * 150 / 100;
 
         uint jitter = (jitterR * decimals / 255 * (255-217)) + (217 * decimals);
