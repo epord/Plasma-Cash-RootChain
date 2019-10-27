@@ -35,12 +35,12 @@ contract Pokedex {
     }
 
     struct Stats {
-        uint8 hp;
-        uint8 atk;
-        uint8 def;
-        uint8 spAtk;
-        uint8 spDef;
-        uint8 speed;
+        uint16 hp;
+        uint16 atk;
+        uint16 def;
+        uint16 spAtk;
+        uint16 spDef;
+        uint16 speed;
     }
 
     struct PokemonData {
@@ -229,7 +229,7 @@ contract Pokedex {
         uint8 spAtk    = uint8(uint256(rng & bytes32(uint256(0x1F000000)))      / (2 ** 24));
         uint8 spDef    = uint8(uint256(rng & bytes32(uint256(0x3E0000000)))     / (2 ** 29));
         uint8 speed    = uint8(uint256(rng & bytes32(uint256(0x7C00000000)))    / (2 ** 34));
-        bool isShiny   = uint8(uint256(rng & bytes32(uint256(0x1FF8000000000))) / (2 ** 39)) == 0;
+        bool isShiny   = uint256(rng & bytes32(uint256(0x1FF8000000000)) )/ (2 ** 39) == 500;
 
 
         PokemonData memory data = pokedex[id+1];
@@ -246,12 +246,12 @@ contract Pokedex {
         );
     }
 
-    function calculateHP(uint256 base, uint256 iv, uint256 level) private pure returns(uint8) {
-        return uint8(level + 10 + ((base + iv) * 2 * level) / 100);
+    function calculateHP(uint256 base, uint256 iv, uint256 level) private pure returns(uint16) {
+        return uint16(level + 10 + ((base + iv) * 2 * level) / 100);
     }
 
-    function calculateStat(uint256 base, uint256 iv, uint256 level) private pure returns(uint8) {
-        return uint8(5 + ((base + iv) * 2 * level) / 100);
+    function calculateStat(uint256 base, uint256 iv, uint256 level) private pure returns(uint16) {
+        return uint16(5 + ((base + iv) * 2 * level) / 100);
     }
 
     function getPokemonData(uint8 id) public view returns(PokemonData memory) {

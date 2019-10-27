@@ -8,8 +8,8 @@ import "../Libraries/Pokedex.sol";
 
 library BattleDamageCalculator {
 
-    uint constant ATTACK_POWER = 2;
-    uint constant CONFUSED_ATTACK_POWER = 1;
+    uint constant ATTACK_POWER = 20;
+    uint constant CONFUSED_ATTACK_POWER = 10;
     uint constant STATUS_HIT_CHANCE = 0xBE;
     uint constant LEVEL = 100;
 

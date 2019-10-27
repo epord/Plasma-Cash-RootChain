@@ -372,7 +372,7 @@ contract RootChain is IERC721Receiver {
         view
     {
         if (blocks[1] % childBlockInterval != 0) {
-            revert("Please do a startDepositExt for deposited transactions");
+            revert("Please do a startDepositExit for deposited transactions");
         } else {
             checkBothIncludedAndSigned(
                 prevTxBytes, exitingTxBytes, prevTxInclusionProof,
