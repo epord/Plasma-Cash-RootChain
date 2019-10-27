@@ -124,4 +124,16 @@ library Transaction {
         }
     }
 
+    function getTransaction(bytes memory txBytes)
+    internal pure returns(Transaction.TX memory) {
+        RLPReader.RLPItem[] memory rlpTx = toRLPItems(txBytes);
+        if(isBasicTransaction(rlpTx)) {
+            return getBasicTx(rlpTx, txBytes);
+        } else if(isAtomicSwap(rlpTx)) {
+            Transaction.AtomicSwapTX[] memory txsData = getAtomicSwapTxs(rlpTx);
+            return toBasicTx(txsData[0]);
+        } else {
+            revert("Invalid RLP Transaction");
+        }
+    }
 }

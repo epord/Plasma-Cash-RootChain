@@ -1,7 +1,9 @@
 pragma solidity ^0.5.2;
+pragma experimental ABIEncoderV2;
 
 import "./PlasmaTurnGame.sol";
 import "../Libraries/Transaction/RLPReader.sol";
+import "./PlasmaChannelManager.sol";
 
 contract RPSExample is PlasmaTurnGame {
     using RLPReader for bytes;
@@ -21,12 +23,12 @@ contract RPSExample is PlasmaTurnGame {
 
     //Rock 0, Paper 1, Scissor 2
 
-    function validateStartState(bytes memory state) public view {
+    function validateStartState(bytes calldata state, bytes calldata exitData) external view returns (PlasmaCM.Exit[] memory) {
         RLPReader.RLPItem[] memory start = state.toRlpItem().toList();
         require(start.length == 3, "Invalid RLP length");
         require(start[0].toUint()%2 == 1 , "GamesToPlay must greater be odd number");
         require(start[1].toUint() == 0 && start[2].toUint() == 0, "Players must start with a score of 0");
-
+        return new PlasmaCM.Exit[](0);
     }
 
     function validateTurnTransition(bytes memory oldState, uint turnNum, bytes memory newState) public view {

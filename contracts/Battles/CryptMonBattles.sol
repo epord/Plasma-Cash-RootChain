@@ -7,6 +7,7 @@ import "../Core/CryptoMons.sol";
 import "../Libraries/Pokedex.sol";
 import "./BattleDamageCalculator.sol";
 import "openzeppelin-solidity/contracts/ownership/Ownable.sol";
+import "./PlasmaChannelManager.sol";
 
 contract CryptoMonBattles is PlasmaTurnGame, Ownable {
 
@@ -63,7 +64,7 @@ contract CryptoMonBattles is PlasmaTurnGame, Ownable {
         cryptomons = _cryptomons;
     }
 
-    function validateStartState(bytes memory state) public view {
+    function validateStartState(bytes calldata state, bytes calldata exitData) external view returns (PlasmaCM.Exit[] memory){
         RLPReader.RLPItem[] memory start = state.toRlpItem().toList();
         require(start.length == uint(Battle.ChargeOP) + 1, "Invalid RLP start length");
 
@@ -82,6 +83,7 @@ contract CryptoMonBattles is PlasmaTurnGame, Ownable {
         require(start[uint(Battle.Status1OP)].toBoolean() == false        , "Opponent Status1 should be false");
         require(start[uint(Battle.Status2OP)].toBoolean() == false        , "Opponent Status2 should be false");
         require(start[uint(Battle.ChargeOP)].toUint() == INITIAL_CHARGES  , "Opponent charges must be initial");
+        return new PlasmaCM.Exit[](0);
     }
 
     function validateTurnTransition(bytes memory oldState, uint turnNum, bytes memory newState) public view {

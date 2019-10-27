@@ -4,7 +4,6 @@
 
 pragma solidity ^0.5.2;
 
-
 // ERC721
 import "openzeppelin-solidity/contracts/token/ERC721/ERC721.sol";
 import "openzeppelin-solidity/contracts/token/ERC721/IERC721Receiver.sol";
@@ -734,6 +733,16 @@ contract RootChain is IERC721Receiver {
 
         // The exiting transaction must be signed by the previous transaciton's receiver
         require(exitingTxData.hash.ecverify(signature, prevTxData.receiver), "Invalid signature");
+    }
+
+    function checkTX(
+        bytes memory txBytes,
+        bytes memory proof,
+        uint256 blockNumber)
+    public
+    view
+    {
+        checkTxValid(txBytes, proof, blockNumber);
     }
 
 

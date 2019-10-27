@@ -8,6 +8,7 @@ import "openzeppelin-solidity/contracts/drafts/Counters.sol";
 import "../Libraries/ChallengeLib.sol";
 import "../Libraries/ECVerify.sol";
 import "./PlasmaTurnGame.sol";
+import "../Core/RootChain.sol";
 
 
 //Plasma Channel Manager
@@ -17,13 +18,13 @@ contract PlasmaCM {
     event ChannelFunded(uint channelId, address indexed creator, address indexed opponent, address channelType, bytes initialState);
     event ChannelConcluded(uint channelId, address indexed creator, address indexed opponent, address channelType);
     event ForceMoveResponded(uint indexed channelId, State.StateStruct nextState, bytes signature);
-
     //events
 
     using Adjudicators for FMChannel;
     using Counters for Counters.Counter;
     using ECVerify for bytes32;
     using State for State.StateStruct;
+    using Transaction for bytes;
 
     enum ChannelState { INITIATED, FUNDED, CLOSED, SUSPENDED }
 
@@ -36,13 +37,29 @@ contract PlasmaCM {
         bytes32 initialArgumentsHash;
         ChannelState state;
         Rules.Challenge forceMoveChallenge;
-        ChallengeLib.Challenge plasmaChallenge;
+    }
+
+    struct Exit {
+        uint64 slot;
+        address prevOwner; // previous owner of coin
+        address owner;
+        uint256 createdAt;
+        uint256 prevBlock;
+        uint256 exitBlock;
+    }
+
+    struct Challenge {
+        uint index;
+        ChallengeLib.Challenge challenge;
     }
 
     mapping (uint => FMChannel) channels;
+    mapping (uint => Challenge[]) challenges;
+    mapping (uint => Exit[]) exits;
     mapping (address => uint) funds;
 
     Counters.Counter channelCounter;
+    RootChain rootChain;
 
     uint256 constant MINIMAL_BET = 0.01 ether;
 
@@ -50,18 +67,23 @@ contract PlasmaCM {
         revert("Please send funds using the FundChannel or makeDeposit method");
     }
 
+    constructor(RootChain _rootChain) public {
+        rootChain = _rootChain;
+    }
+
     function initiateChannel(
         address channelType,
         address opponent,
         uint stake,
-        bytes calldata initialGameAttributes
+        bytes calldata initialGameAttributes,
+        bytes calldata exitData
     ) external payable Payment(stake) {
-
-        ((PlasmaTurnGame)(channelType)).validateStartState(initialGameAttributes);
         channelCounter.increment();
 
-        uint channelId = channelCounter.current();
-
+        Exit[] memory exitPlayer = ((PlasmaTurnGame)(channelType)).validateStartState(initialGameAttributes, exitData);
+        for(uint i; i<exitPlayer.length; i++) {
+            exits[channelCounter.current()].push(exitPlayer[i]);
+        }
         address[2] memory addresses;
         addresses[0] = msg.sender;
         addresses[1] = opponent;
@@ -69,20 +91,25 @@ contract PlasmaCM {
         Rules.Challenge memory rchallenge;
         ChallengeLib.Challenge memory cchallenge;
 
-        channels[channelId] = FMChannel(
-            channelId,
+        FMChannel memory channel = FMChannel(
+            channelCounter.current(),
             channelType,
             stake,
             addresses,
             keccak256(initialGameAttributes),
             ChannelState.INITIATED,
-            rchallenge,
-            cchallenge
+            rchallenge
         );
 
+        channels[channel.channelId] = channel;
+        emit ChannelInitiated(channel.channelId, channel.players[0], channel.players[1], channel.channelType);
 
-        emit ChannelInitiated(channelId, msg.sender, opponent, channelType);
-        ((PlasmaTurnGame)(channelType)).eventRequestState(channelId, initialGameAttributes, msg.sender, opponent);
+        ((PlasmaTurnGame)(channelType)).eventRequestState(
+            channel.channelId,
+            initialGameAttributes,
+            channel.players[0],
+            channel.players[1]
+        );
     }
 
     function fundChannel(
@@ -185,7 +212,17 @@ contract PlasmaCM {
     }
 
     ///
-    //CHALLENGES
+
+
+    function checkBefore(Exit memory exit, bytes memory txBytes, bytes memory proof, uint blockNumber)
+    private
+    view
+    {
+        require(blockNumber <= exit.prevBlock, "Tx should be before the exit's parent block");
+        rootChain.checkTX(txBytes, proof, blockNumber);
+        Transaction.TX memory txData = txBytes.getTransaction();
+        require(txData.slot == exit.slot, "Tx is referencing another slot");
+    }
     ///
 
     //modifiers
