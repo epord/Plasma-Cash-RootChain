@@ -77,7 +77,7 @@ contract CryptoMonBattles is PlasmaTurnGame, Ownable {
         cryptomons = _cryptomons;
     }
 
-    function validateStartState(bytes calldata state, address[2] calldata players, bytes calldata exitData) external view returns (RootChain.Exitresult = [] memory result){
+    function validateStartState(bytes calldata state, address[2] calldata players, bytes calldata exitData) external view returns (RootChain.Exit [] memory result){
         RLPReader.RLPItem[] memory start = state.toRlpItem().toList();
         require(start.length == uint(Battle.ChargeOP) + 1, "Invalid RLP start length");
 

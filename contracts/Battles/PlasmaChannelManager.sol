@@ -104,7 +104,8 @@ contract PlasmaCM {
 
     function fundChannel(
         uint channelId,
-        bytes calldata initialGameAttributes
+        bytes calldata initialGameAttributes,
+        bytes calldata exitData
     ) external payable channelExists(channelId) {
         FMChannel storage channel = channels[channelId];
 
@@ -113,7 +114,10 @@ contract PlasmaCM {
         require(channel.stake == msg.value, "Payment must be equal to channel stake");
         require(channel.initialArgumentsHash == keccak256(initialGameAttributes), "Initial state does not match");
         channel.state = ChannelState.FUNDED;
-
+        RootChain.Exit[] memory exitOpponent = ((PlasmaTurnGame)(channel.channelType)).validateStartState(initialGameAttributes, channel.players,  exitData);
+        for(uint i; i<exitOpponent.length; i++) {
+            exits[channel.channelId].push(exitOpponent[i]);
+        }
         emit ChannelFunded(channel.channelId, channel.players[0], channel.players[1], channel.channelType, initialGameAttributes);
         ((PlasmaTurnGame)(channel.channelType)).eventStartState(channelId, initialGameAttributes, channel.players[0], channel.players[1]);
     }
@@ -202,6 +206,8 @@ contract PlasmaCM {
     }
 
     ///
+    // CHALLENGES
+    ///
     function challengeBefore(
         uint channelId,
         uint index,
@@ -211,7 +217,19 @@ contract PlasmaCM {
     external
     {
         checkBefore(exits[channelId][index], txBytes, txInclusionProof, blockNumber);
-//        setChallenged(slot, txBytes.getOwner(), blockNumber, txBytes.getHash());
+        bytes32 txHash = txBytes.getHash();
+        require(!challenges[channelId].contains(txHash), "Transaction used for challenge already");
+
+        // Need to save the exiting transaction's owner, to verify
+        // that the response is valid
+        challenges[channelId].push(
+            ChallengeLib.Challenge({
+                owner:  txBytes.getOwner(),
+                challenger: msg.sender,
+                txHash: txHash,
+                challengingBlockNumber: blockNumber
+            })
+        );
     }
 
     function checkBefore(RootChain.Exit memory exit, bytes memory txBytes, bytes memory proof, uint blockNumber)
