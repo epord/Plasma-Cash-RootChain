@@ -25,6 +25,7 @@ contract PlasmaCM {
     using ECVerify for bytes32;
     using State for State.StateStruct;
     using Transaction for bytes;
+    using ChallengeLib for ChallengeLib.Challenge[];
 
     enum ChannelState { INITIATED, FUNDED, CLOSED, SUSPENDED }
 
@@ -39,23 +40,14 @@ contract PlasmaCM {
         Rules.Challenge forceMoveChallenge;
     }
 
-    struct Exit {
-        uint64 slot;
-        address prevOwner; // previous owner of coin
-        address owner;
-        uint256 createdAt;
-        uint256 prevBlock;
-        uint256 exitBlock;
-    }
-
     struct Challenge {
         uint index;
         ChallengeLib.Challenge challenge;
     }
 
     mapping (uint => FMChannel) channels;
-    mapping (uint => Challenge[]) challenges;
-    mapping (uint => Exit[]) exits;
+    mapping (uint => ChallengeLib.Challenge[]) challenges;
+    mapping (uint => RootChain.Exit[]) exits;
     mapping (address => uint) funds;
 
     Counters.Counter channelCounter;
@@ -80,16 +72,14 @@ contract PlasmaCM {
     ) external payable Payment(stake) {
         channelCounter.increment();
 
-        Exit[] memory exitPlayer = ((PlasmaTurnGame)(channelType)).validateStartState(initialGameAttributes, exitData);
-        for(uint i; i<exitPlayer.length; i++) {
-            exits[channelCounter.current()].push(exitPlayer[i]);
-        }
         address[2] memory addresses;
         addresses[0] = msg.sender;
         addresses[1] = opponent;
-
+        RootChain.Exit[] memory exitPlayer = ((PlasmaTurnGame)(channelType)).validateStartState(initialGameAttributes, addresses,  exitData);
+        for(uint i; i<exitPlayer.length; i++) {
+            exits[channelCounter.current()].push(exitPlayer[i]);
+        }
         Rules.Challenge memory rchallenge;
-        ChallengeLib.Challenge memory cchallenge;
 
         FMChannel memory channel = FMChannel(
             channelCounter.current(),
@@ -212,9 +202,19 @@ contract PlasmaCM {
     }
 
     ///
+    function challengeBefore(
+        uint channelId,
+        uint index,
+        bytes calldata txBytes,
+        bytes calldata txInclusionProof,
+        uint256 blockNumber)
+    external
+    {
+        checkBefore(exits[channelId][index], txBytes, txInclusionProof, blockNumber);
+//        setChallenged(slot, txBytes.getOwner(), blockNumber, txBytes.getHash());
+    }
 
-
-    function checkBefore(Exit memory exit, bytes memory txBytes, bytes memory proof, uint blockNumber)
+    function checkBefore(RootChain.Exit memory exit, bytes memory txBytes, bytes memory proof, uint blockNumber)
     private
     view
     {
@@ -222,6 +222,113 @@ contract PlasmaCM {
         rootChain.checkTX(txBytes, proof, blockNumber);
         Transaction.TX memory txData = txBytes.getTransaction();
         require(txData.slot == exit.slot, "Tx is referencing another slot");
+    }
+
+    function challengeAfter(
+        uint channelId,
+        uint index,
+        bytes calldata challengingTransaction,
+        bytes calldata proof,
+        bytes calldata signature,
+        uint256 challengingBlockNumber)
+    external
+    {
+        checkAfter(exits[channelId][index], challengingTransaction, proof, signature, challengingBlockNumber);
+    }
+
+    function checkAfter(
+        RootChain.Exit memory exit,
+        bytes memory txBytes,
+        bytes memory proof,
+        bytes memory signature,
+        uint blockNumber) private view {
+        require(exit.exitBlock < blockNumber, "Tx should be after the exitBlock");
+        rootChain.checkTX(txBytes, proof, blockNumber);
+        Transaction.TX memory txData = txBytes.getTransaction();
+        require(txData.hash.ecverify(signature, exit.owner), "Invalid signature");
+        require(txData.slot == exit.slot, "Tx is referencing another slot");
+        require(txData.prevBlock == exit.exitBlock, "Not a direct spend");
+    }
+
+    function challengeBetween(
+        uint channelId,
+        uint index,
+        bytes calldata challengingTransaction,
+        bytes calldata proof,
+        bytes calldata signature,
+        uint256 challengingBlockNumber)
+    external
+    {
+        checkBetween(exits[channelId][index], challengingTransaction, proof, signature, challengingBlockNumber);
+//        applyPenalties(slot);
+    }
+
+    function checkBetween(
+        RootChain.Exit memory exit,
+        bytes memory txBytes,
+        bytes memory proof,
+        bytes memory signature,
+        uint blockNumber)
+    private
+    view
+    {
+        require(exit.exitBlock > blockNumber && exit.prevBlock < blockNumber,
+            "Tx should be between the exit's blocks"
+        );
+
+        rootChain.checkTX(txBytes, proof, blockNumber);
+        Transaction.TX memory txData = txBytes.getTransaction();
+        require(txData.hash.ecverify(signature, exit.prevOwner), "Invalid signature");
+        require(txData.slot == exit.slot, "Tx is referencing another slot");
+    }
+
+    function respondChallengeBefore(
+        uint channelId,
+        uint index,
+        bytes32 challengingTxHash,
+        uint256 respondingBlockNumber,
+        bytes calldata respondingTransaction,
+        bytes calldata proof,
+        bytes calldata signature)
+    external
+    {
+        // Check that the transaction being challenged exists
+        require(challenges[channelId].contains(challengingTxHash), "Responding to non existing challenge");
+
+        // Get index of challenge in the challenges array
+        uint256 cIndex = uint256(challenges[channelId].indexOf(challengingTxHash));
+        checkResponse(
+            exits[channelId][index],
+            challenges[channelId][cIndex],
+            respondingBlockNumber,
+            respondingTransaction,
+            signature,
+            proof);
+
+        // If the exit was actually challenged and responded, penalize the challenger and award the responder
+//        slashBond(challenges[slot][index].challenger, msg.sender);
+
+//        challenges[slot].remove(challengingTxHash);
+//        emit RespondedExitChallenge(slot);
+    }
+
+    function checkResponse(
+        RootChain.Exit memory exit,
+        ChallengeLib.Challenge memory challenge,
+        uint256 blockNumber,
+        bytes memory txBytes,
+        bytes memory signature,
+        bytes memory proof
+    )
+    private
+    view
+    {
+        rootChain.checkTX(txBytes, proof, blockNumber);
+        Transaction.TX memory txData = txBytes.getTransaction();
+        require(txData.hash.ecverify(signature, challenge.owner), "Invalid signature");
+        require(txData.slot == exit.slot, "Tx is referencing another slot");
+        require(blockNumber > challenge.challengingBlockNumber, "BlockNumber must be after the chalenge");
+        require(blockNumber <= exit.exitBlock, "Cannot respond with a tx after the exit");
     }
     ///
 

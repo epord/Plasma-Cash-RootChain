@@ -193,10 +193,10 @@ contract RootChain is IERC721Receiver {
 
     // Each exit can only be challenged by a single challenger at a time
     struct Exit {
+        uint64 slot;
         address prevOwner; // previous owner of coin
         address owner;
         uint256 createdAt;
-        uint256 bond;
         uint256 prevBlock;
         uint256 exitBlock;
     }
@@ -367,7 +367,7 @@ contract RootChain is IERC721Receiver {
         bytes memory prevTxInclusionProof, bytes memory exitingTxInclusionProof,
         bytes memory signature,
         uint256[2] memory blocks)
-        private
+        public
         view
     {
         if (blocks[1] % childBlockInterval != 0) {
@@ -390,10 +390,10 @@ contract RootChain is IERC721Receiver {
         // Create exit
         Coin storage c = coins[slot];
         c.exit = Exit({
+            slot: slot,
             prevOwner: prevOwner,
             owner: msg.sender,
             createdAt: block.timestamp,
-            bond: msg.value,
             prevBlock: prevBlock,
             exitBlock: exitingBlock
         });
