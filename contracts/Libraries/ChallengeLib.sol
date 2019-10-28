@@ -28,6 +28,11 @@ library ChallengeLib {
         if (index == -1) {
             return false; // Tx not in challenge arraey
         }
+
+        return removeAt(_array, uint(index));
+    }
+
+    function removeAt(Challenge[] storage _array, uint index) internal returns (bool) {
         // Replace element with last element
         Challenge memory lastChallenge = _array[_array.length - 1];
         _array[uint(index)] = lastChallenge;
