@@ -7,11 +7,13 @@ import "../Core/CryptoMons.sol";
 import "../Libraries/Pokedex.sol";
 import "./BattleDamageCalculator.sol";
 import "openzeppelin-solidity/contracts/ownership/Ownable.sol";
+import "./PlasmaChannelManager.sol";
 
 contract CryptoMonBattles is PlasmaTurnGame, Ownable {
 
     using BattleDamageCalculator for BattleDamageCalculator.BattleState;
     using RLPReader for bytes;
+    using Transaction for bytes;
     using RLPReader for RLPReader.RLPItem;
     //Signed Player -> Signed OP        -> Signed Player
 
@@ -53,17 +55,29 @@ contract CryptoMonBattles is PlasmaTurnGame, Ownable {
         NextHashDecision
     }
 
-    RootChain plasma;
+    enum RLPExitData {
+        PlayerIndex,
+        Slot,
+        PrevBlockNumber,
+        BlockNumber,
+        PrevTxBytes,
+        ExitingTxBytes,
+        PrevTxInclusionProof,
+        ExitingTxInclusionProof,
+        Signature
+    }
+
+    RootChain rootChain;
     CryptoMons cryptomons;
 
     uint constant INITIAL_CHARGES = 1;
 
-    constructor(RootChain _plasma, CryptoMons _cryptomons) public {
-        plasma = _plasma;
+    constructor(RootChain _rootChain, CryptoMons _cryptomons) public {
+        rootChain = _rootChain;
         cryptomons = _cryptomons;
     }
 
-    function validateStartState(bytes memory state) public view {
+    function validateStartState(bytes calldata state, address[2] calldata players, bytes calldata exitData) external view returns (RootChain.Exit[] memory){
         RLPReader.RLPItem[] memory start = state.toRlpItem().toList();
         require(start.length == uint(Battle.ChargeOP) + 1, "Invalid RLP start length");
 
@@ -82,6 +96,62 @@ contract CryptoMonBattles is PlasmaTurnGame, Ownable {
         require(start[uint(Battle.Status1OP)].toBoolean() == false        , "Opponent Status1 should be false");
         require(start[uint(Battle.Status2OP)].toBoolean() == false        , "Opponent Status2 should be false");
         require(start[uint(Battle.ChargeOP)].toUint() == INITIAL_CHARGES  , "Opponent charges must be initial");
+
+        RLPReader.RLPItem[] memory rlpExit = exitData.toRlpItem().toList();
+
+        address supposedOwner;
+        uint64 token;
+        if(rlpExit[0].toUint() == 0) {
+            supposedOwner = players[0];
+            token = uint64(start[uint(Battle.CryptoMonPL)].toUint());
+        } else {
+            supposedOwner = players[1];
+            token = uint64(start[uint(Battle.CryptoMonOP)].toUint());
+        }
+
+        RootChain.Exit memory exit;
+        if (rlpExit.length == 1) {
+            (,uint256 depositBlock, address owner, , ) = rootChain.getPlasmaCoin(token);
+            require(owner == supposedOwner, "Sender does not match deposit owner");
+            exit = RootChain.Exit({
+                slot: token,
+                prevOwner: address(0),
+                owner: owner,
+                createdAt: block.timestamp,
+                prevBlock: 0,
+                exitBlock: depositBlock
+                });
+        } else {
+            uint[2] memory blocks;
+            blocks[0] = rlpExit[uint(RLPExitData.PrevBlockNumber)].toUint();
+            blocks[1] = rlpExit[uint(RLPExitData.BlockNumber)].toUint();
+
+            require(rlpExit.length == uint(RLPExitData.Signature) + 1, "Invalid exitData RLP Length");
+            require(supposedOwner == rlpExit[uint(RLPExitData.ExitingTxBytes)].toBytes().getOwner(),
+                "Player does not match exitingTxBytes owner");
+
+            rootChain.doInclusionChecks(
+                rlpExit[uint(RLPExitData.PrevTxBytes)].toBytes(),
+                rlpExit[uint(RLPExitData.ExitingTxBytes)].toBytes(),
+                rlpExit[uint(RLPExitData.PrevTxInclusionProof)].toBytes(),
+                rlpExit[uint(RLPExitData.ExitingTxInclusionProof)].toBytes(),
+                rlpExit[uint(RLPExitData.Signature)].toBytes(),
+                blocks
+            );
+
+            exit = RootChain.Exit({
+                slot: token,
+                prevOwner: rlpExit[uint(RLPExitData.PrevTxBytes)].toBytes().getOwner(),
+                owner: supposedOwner,
+                createdAt: block.timestamp,
+                prevBlock: blocks[0],
+                exitBlock: blocks[1]
+                });
+        }
+
+        RootChain.Exit[] memory result = new RootChain.Exit[](1);
+        result[0] = exit;
+        return result;
     }
 
     function validateTurnTransition(bytes memory oldState, uint turnNum, bytes memory newState) public view {
@@ -255,7 +325,7 @@ contract CryptoMonBattles is PlasmaTurnGame, Ownable {
 
     function getCryptoMon(uint plasmaID) public view returns (Pokedex.Pokemon memory) {
         if(plasmaID >= 2**64) revert("Invalid PlasmaID, it should be a uint64");
-        (uint256 cryptoMonId, , , , ) = plasma.getPlasmaCoin(uint64(plasmaID));
+        (uint256 cryptoMonId, , , , ) = rootChain.getPlasmaCoin(uint64(plasmaID));
         return cryptomons.getCryptomon(cryptoMonId);
     }
 

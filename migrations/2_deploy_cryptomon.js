@@ -2,7 +2,6 @@ var CryptoMon = artifacts.require("CryptoMons");
 var RootChain = artifacts.require("RootChain");
 var ValidatorManagerContract = artifacts.require("ValidatorManagerContract");
 var plasmaCM = artifacts.require("PlasmaCM");
-var RPSExample = artifacts.require("RPSExample");
 var adjudicators = artifacts.require("Adjudicators");
 var state = artifacts.require("State");
 var BattleDamageCalculator = artifacts.require("BattleDamageCalculator");
@@ -18,7 +17,7 @@ module.exports = function(deployer) {
         await deployer.deploy(adjudicators);
         await deployer.link(adjudicators, plasmaCM);
         await deployer.link(state, plasmaCM);
-        await deployer.deploy(plasmaCM);
+        await deployer.deploy(plasmaCM, RootChain.address);
         await deployer.deploy(BattleDamageCalculator);
         await deployer.link(BattleDamageCalculator, CryptoMonBattles);
         await deployer.deploy(CryptoMonBattles, RootChain.address, CryptoMon.address);
