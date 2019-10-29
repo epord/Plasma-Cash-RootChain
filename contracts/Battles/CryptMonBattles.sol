@@ -77,7 +77,12 @@ contract CryptoMonBattles is PlasmaTurnGame, Ownable {
         cryptomons = _cryptomons;
     }
 
-    function validateStartState(bytes calldata state, address[2] calldata players, bytes calldata exitData) external view returns (RootChain.Exit[] memory){
+    function validateStartState(
+        bytes calldata state,
+        address[2] calldata players,
+        bytes calldata exitData
+    ) external view returns (RootChain.Exit[] memory) {
+
         RLPReader.RLPItem[] memory start = state.toRlpItem().toList();
         require(start.length == uint(Battle.ChargeOP) + 1, "Invalid RLP start length");
 
@@ -120,7 +125,7 @@ contract CryptoMonBattles is PlasmaTurnGame, Ownable {
                 createdAt: block.timestamp,
                 prevBlock: 0,
                 exitBlock: depositBlock
-                });
+            });
         } else {
             uint[2] memory blocks;
             blocks[0] = rlpExit[uint(RLPExitData.PrevBlockNumber)].toUint();
@@ -146,7 +151,7 @@ contract CryptoMonBattles is PlasmaTurnGame, Ownable {
                 createdAt: block.timestamp,
                 prevBlock: blocks[0],
                 exitBlock: blocks[1]
-                });
+            });
         }
 
         RootChain.Exit[] memory result = new RootChain.Exit[](1);
@@ -166,17 +171,17 @@ contract CryptoMonBattles is PlasmaTurnGame, Ownable {
 
     function validateTransitionKeepBasics(RLPReader.RLPItem[] memory first, RLPReader.RLPItem[] memory second) private pure {
         //Player
-        require(first[uint(Battle.CryptoMonPL)].toUint() == second[uint(Battle.CryptoMonPL)].toUint() , "Player Cryptomon must stay same");
-        require(first[uint(Battle.HPPL)].toUint()        == second[uint(Battle.HPPL)].toUint()        , "Player HP must stay same");
-        require(first[uint(Battle.Status1PL)].toBoolean()== second[uint(Battle.Status1PL)].toBoolean(), "Player Status1 must stay same");
-        require(first[uint(Battle.Status2PL)].toBoolean()== second[uint(Battle.Status2PL)].toBoolean(), "Player Status2 must stay same");
-        require(first[uint(Battle.ChargePL)].toUint()    == second[uint(Battle.ChargePL)].toUint()    , "Player charges must stay same");
+        require(first[uint(Battle.CryptoMonPL)].toUint() == second[uint(Battle.CryptoMonPL)].toUint() ,"Player Cryptomon must stay same");
+        require(first[uint(Battle.HPPL)].toUint()        == second[uint(Battle.HPPL)].toUint()        ,"Player HP must stay same");
+        require(first[uint(Battle.Status1PL)].toBoolean()== second[uint(Battle.Status1PL)].toBoolean(),"Player Status1 must stay same");
+        require(first[uint(Battle.Status2PL)].toBoolean()== second[uint(Battle.Status2PL)].toBoolean(),"Player Status2 must stay same");
+        require(first[uint(Battle.ChargePL)].toUint()    == second[uint(Battle.ChargePL)].toUint()    ,"Player charges must stay same");
         //Opponent
-        require(first[uint(Battle.CryptoMonOP)].toUint() == second[uint(Battle.CryptoMonOP)].toUint()  , "Opponent Cryptomon must stay same");
-        require(first[uint(Battle.HPOP)].toUint()        == second[uint(Battle.HPOP)].toUint()         , "Opponent HP must stay same");
-        require(first[uint(Battle.Status1OP)].toBoolean()== second[uint(Battle.Status1OP)].toBoolean() , "Opponent Status1 must stay same");
-        require(first[uint(Battle.Status2OP)].toBoolean()== second[uint(Battle.Status2OP)].toBoolean() , "Opponent Status2 must stay same");
-        require(first[uint(Battle.ChargeOP)].toUint()    == second[uint(Battle.ChargeOP)].toUint()     , "Opponent charges must stay same");
+        require(first[uint(Battle.CryptoMonOP)].toUint() == second[uint(Battle.CryptoMonOP)].toUint() ,"Opponent Cryptomon must stay same");
+        require(first[uint(Battle.HPOP)].toUint()        == second[uint(Battle.HPOP)].toUint()        ,"Opponent HP must stay same");
+        require(first[uint(Battle.Status1OP)].toBoolean()== second[uint(Battle.Status1OP)].toBoolean(),"Opponent Status1 must stay same");
+        require(first[uint(Battle.Status2OP)].toBoolean()== second[uint(Battle.Status2OP)].toBoolean(),"Opponent Status2 must stay same");
+        require(first[uint(Battle.ChargeOP)].toUint()    == second[uint(Battle.ChargeOP)].toUint()    ,"Opponent charges must stay same");
     }
 
     function validateInitialTransition(bytes memory startState, bytes memory firstTurn) public pure {

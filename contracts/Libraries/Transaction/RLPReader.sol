@@ -122,7 +122,7 @@ library RLPReader {
         assembly {
             result := mload(memPtr)
 
-            // shfit to the correct location if neccesary
+        // shfit to the correct location if neccesary
             if lt(len, 32) {
                 result := div(result, exp(256, sub(32, len)))
             }
@@ -173,8 +173,8 @@ library RLPReader {
         uint currPtr = item.memPtr + _payloadOffset(item.memPtr);
         uint endPtr = item.memPtr + item.len;
         while (currPtr < endPtr) {
-           currPtr = currPtr + _itemLength(currPtr); // skip over an item
-           count++;
+            currPtr = currPtr + _itemLength(currPtr); // skip over an item
+            count++;
         }
 
         return count;
@@ -187,18 +187,16 @@ library RLPReader {
             byte0 := byte(0, mload(memPtr))
         }
 
-        if (byte0 < STRING_SHORT_START)
+        if (byte0 < STRING_SHORT_START){
             return 1;
-
-        else if (byte0 < STRING_LONG_START)
+        } else if (byte0 < STRING_LONG_START) {
             return byte0 - STRING_SHORT_START + 1;
-
-        else if (byte0 < LIST_SHORT_START) {
+        } else if (byte0 < LIST_SHORT_START) {
             assembly {
                 let byteLen := sub(byte0, 0xb7) // # of bytes the actual length is
                 memPtr := add(memPtr, 1) // skip over the first byte
 
-                /* 32 byte word size */
+            /* 32 byte word size */
                 let dataLen := div(mload(memPtr), exp(256, sub(32, byteLen))) // right shifting to get the len
                 len := add(dataLen, add(byteLen, 1))
             }
@@ -226,14 +224,15 @@ library RLPReader {
             byte0 := byte(0, mload(memPtr))
         }
 
-        if (byte0 < STRING_SHORT_START)
+        if (byte0 < STRING_SHORT_START) {
             return 0;
-        else if (byte0 < STRING_LONG_START || (byte0 >= LIST_SHORT_START && byte0 < LIST_LONG_START))
+        } else if (byte0 < STRING_LONG_START || (byte0 >= LIST_SHORT_START && byte0 < LIST_LONG_START)) {
             return 1;
-        else if (byte0 < LIST_SHORT_START)  // being explicit
+        } else if (byte0 < LIST_SHORT_START) {  // being explicit
             return byte0 - (STRING_LONG_START - 1) + 1;
-        else
+        } else {
             return byte0 - (LIST_LONG_START - 1) + 1;
+        }
     }
 
     /*

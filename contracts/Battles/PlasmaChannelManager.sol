@@ -28,9 +28,18 @@ contract PlasmaCM {
     event ChannelInitiated(uint channelId, address indexed creator, address indexed opponent, address channelType);
     event ChannelFunded(uint channelId, address indexed creator, address indexed opponent, address channelType, bytes initialState);
     event ChannelConcluded(uint channelId, address indexed creator, address indexed opponent, address channelType);
-    event ChannelChallenged(uint channelId, uint exitIndex, address indexed creator, address indexed opponent, address indexed challenger);
-    event ChallengeRequest(uint channelId, uint exitIndex, bytes32 txHash, address indexed creator, address indexed opponent, address indexed challenger);
-    event ChallengeResponded(uint channelId, uint exitIndex, bytes32 txHash, address indexed creator, address indexed opponent, address indexed challenger);
+    event ChannelChallenged(
+        uint channelId, uint exitIndex,
+        address indexed creator, address indexed opponent, address indexed challenger
+    );
+    event ChallengeRequest(
+        uint channelId, uint exitIndex, bytes32 txHash,
+        address indexed creator, address indexed opponent, address indexed challenger
+    );
+    event ChallengeResponded(
+        uint channelId, uint exitIndex, bytes32 txHash,
+        address indexed creator, address indexed opponent, address indexed challenger
+    );
     event ForceMoveResponded(uint indexed channelId, State.StateStruct nextState, bytes signature);
 
     ///////////////////////////////////////////////////////////////////////////////////
@@ -92,7 +101,8 @@ contract PlasmaCM {
         addresses[0] = msg.sender;
         addresses[1] = opponent;
 
-        RootChain.Exit[] memory exitPlayer = ((PlasmaTurnGame)(channelType)).validateStartState(initialGameAttributes, addresses,  exitData);
+        RootChain.Exit[] memory exitPlayer = ((PlasmaTurnGame)(channelType))
+            .validateStartState(initialGameAttributes, addresses,  exitData);
         for(uint i; i<exitPlayer.length; i++) {
             exits[channelCounter.current()].push(exitPlayer[i]);
         }
@@ -134,7 +144,8 @@ contract PlasmaCM {
         require(channel.initialArgumentsHash == keccak256(initialGameAttributes), "Initial state does not match");
         channel.state = ChannelState.FUNDED;
         channel.fundedTimestamp = block.timestamp;
-        RootChain.Exit[] memory exitOpponent = ((PlasmaTurnGame)(channel.channelType)).validateStartState(initialGameAttributes, channel.players,  exitData);
+        RootChain.Exit[] memory exitOpponent = ((PlasmaTurnGame)(channel.channelType))
+            .validateStartState(initialGameAttributes, channel.players,  exitData);
         for(uint i; i<exitOpponent.length; i++) {
             exits[channel.channelId].push(exitOpponent[i]);
         }
@@ -454,12 +465,15 @@ contract PlasmaCM {
 
     modifier isChallengeable(uint channelId) {
         require(channels[channelId].state  == ChannelState.SUSPENDED
-         || channels[channelId].state  == ChannelState.FUNDED, "Channel must be funded or suspended");
+        || channels[channelId].state  == ChannelState.FUNDED, "Channel must be funded or suspended");
         _;
     }
 
     modifier isAllowed(uint channelId) {
-        require(channels[channelId].players[0] == msg.sender || channels[channelId].players[1] == msg.sender, "The sender is not involved in the channel");
+        require(
+            channels[channelId].players[0] == msg.sender || channels[channelId].players[1] == msg.sender,
+                "The sender is not involved in the channel"
+        );
         _;
     }
 

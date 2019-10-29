@@ -19,12 +19,12 @@ library Rules {
         address opponent,
         bytes32 initialArgumentsHash
     ) internal pure {
-       require(state.turnNum == 0, "First turn must be 0");
-       require(state.participants[0] == player, "State player is incorrect");
-       require(state.participants[1] == opponent, "State opponent is incorrect");
-       require(initialArgumentsHash == keccak256(state.gameAttributes), "Initial states does not match");
+        require(state.turnNum == 0, "First turn must be 0");
+        require(state.participants[0] == player, "State player is incorrect");
+        require(state.participants[1] == opponent, "State opponent is incorrect");
+        require(initialArgumentsHash == keccak256(state.gameAttributes), "Initial states does not match");
     }
-    
+
     function validateTransition(
         State.StateStruct memory fromState,
         State.StateStruct memory toState
@@ -111,12 +111,12 @@ library Rules {
             challengeState.channelId == alternativeState.channelId,
             "alternativeState must have the right channel"
         );
-        
+
         require(
             challengeState.turnNum == alternativeState.turnNum,
             "alternativeState must have the same nonce as the challenge state"
         );
-        
+
         // .. it must be signed (by the challenger)
         alternativeState.requireSignature(signatures[0]);
 

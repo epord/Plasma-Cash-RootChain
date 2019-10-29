@@ -404,12 +404,18 @@ library BattleDamageCalculator {
     // -----------------------------------------------
 
     // CRITICAL ---------------------------------------------
-    function getCriticalHitThreshold(CryptoMonState memory state, CryptoMonState memory otherState) private pure returns (uint8) {
+    function getCriticalHitThreshold(
+        CryptoMonState memory state,
+        CryptoMonState memory otherState
+    ) private pure returns (uint8) {
+
         uint T = state.data.base.speed;
-        if((otherState.status1 && state.data.type1 == Pokedex.Type.Fighting) || (otherState.status2 && state.data.type2 == Pokedex.Type.Fighting) ) {
+        if( (otherState.status1 && state.data.type1 == Pokedex.Type.Fighting)
+            || (otherState.status2 && state.data.type2 == Pokedex.Type.Fighting)
+        ) {
             T =T * 8;
         } else {
-          T = T / 2;
+            T = T / 2;
         }
         if(T > 0xFF) {
             return 0xFF;

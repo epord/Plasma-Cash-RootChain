@@ -124,8 +124,7 @@ library Transaction {
         }
     }
 
-    function getTransaction(bytes memory txBytes)
-    internal pure returns(Transaction.TX memory) {
+    function getTransaction(bytes memory txBytes) internal pure returns(Transaction.TX memory) {
         RLPReader.RLPItem[] memory rlpTx = toRLPItems(txBytes);
         if(isBasicTransaction(rlpTx)) {
             return getBasicTx(rlpTx, txBytes);

@@ -34,7 +34,7 @@ contract RootChain is IERC721Receiver {
      * @param contractAddress The address of the contract making the deposit
      */
     event Deposit(uint64 indexed slot, uint256 blockNumber,
-                  address indexed from, address indexed contractAddress);
+        address indexed from, address indexed contractAddress);
 
     /**
      * Event for block submission logging
@@ -246,6 +246,7 @@ contract RootChain is IERC721Receiver {
     /// @dev called by a Validator to append a Plasma block to the Plasma chain
     /// @param root The transaction root hash of the Plasma block being added
     function submitBlock(uint256 blockNumber, bytes32 root) public isValidator {
+
         // rounding to next whole `childBlockInterval`
         require(blockNumber >= currentBlock, "A block less than currentBlock cannot be submitted");
         currentBlock = blockNumber;
@@ -261,16 +262,17 @@ contract RootChain is IERC721Receiver {
     /// @dev called by a Validator to append a Secret Revealing block to the Plasma chain
     /// @param root The transaction root hash of the Secret Revealing block being added
     function submitSecretBlock(uint256 blockNumber, bytes32 root) public isValidator {
+
         // rounding to next whole `childBlockInterval`
         ChildBlock memory childBlock = childChain[blockNumber];
         require(childBlock.root != 0, "A block must be submitted first in order to reveal the swap secrets");
         require((block.timestamp - childBlock.createdAt) < SECRET_REVEALING_PERIOD ,
-                "Time to reveal secrets is already over");
+            "Time to reveal secrets is already over");
 
         secretRevealingChain[blockNumber] = ChildBlock({
             root: root,
             createdAt: block.timestamp
-            });
+        });
 
         emit SubmittedSecretBlock(blockNumber, root, block.timestamp);
     }
@@ -283,6 +285,7 @@ contract RootChain is IERC721Receiver {
     ///            identifier allocated by the ERC721 token contract; it is not
     ///            related to `slot`. If the coin is ETH or ERC20 the uid is 0
     function deposit(address from, address contractAddress, uint256 uid) private {
+
         require(!paused, "Contract is not accepting more deposits!");
         currentBlock = currentBlock.add(1);
         uint64 slot = uint64(bytes8(keccak256(abi.encodePacked(numCoins, msg.sender, from))));
@@ -316,10 +319,8 @@ contract RootChain is IERC721Receiver {
 
     // @dev Allows and exit of a deposited transaction
     // @param slot The slot of the coin being exited
-    function startDepositExit(uint64 slot)
-    external
-    payable isBonded
-    isState(slot, State.NOT_EXITING) {
+    function startDepositExit(uint64 slot) external payable isBonded isState(slot, State.NOT_EXITING) {
+
         Coin memory coin = coins[slot];
         require(coin.owner == msg.sender, "Sender does not match deposit owner");
         pushExit(slot, address(0), 0, coin.depositBlock);
@@ -331,13 +332,10 @@ contract RootChain is IERC721Receiver {
         bytes calldata prevTxBytes, bytes calldata exitingTxBytes,
         bytes calldata prevTxInclusionProof, bytes calldata exitingTxInclusionProof,
         bytes calldata signature,
-        uint256[2] calldata blocks)
-        external
-        payable isBonded
-        isState(slot, State.NOT_EXITING)
-    {
-        require(msg.sender == exitingTxBytes.getOwner(), "Sender does not match exitingTxBytes owner");
+        uint256[2] calldata blocks
+    ) external payable isBonded isState(slot, State.NOT_EXITING) {
 
+        require(msg.sender == exitingTxBytes.getOwner(), "Sender does not match exitingTxBytes owner");
         doInclusionChecks(
             prevTxBytes, exitingTxBytes,
             prevTxInclusionProof, exitingTxInclusionProof,
@@ -366,10 +364,9 @@ contract RootChain is IERC721Receiver {
         bytes memory prevTxBytes, bytes memory exitingTxBytes,
         bytes memory prevTxInclusionProof, bytes memory exitingTxInclusionProof,
         bytes memory signature,
-        uint256[2] memory blocks)
-        public
-        view
-    {
+        uint256[2] memory blocks
+    ) public view {
+
         if (blocks[1] % childBlockInterval != 0) {
             revert("Please do a startDepositExit for deposited transactions");
         } else {
@@ -384,9 +381,9 @@ contract RootChain is IERC721Receiver {
     function pushExit(
         uint64 slot,
         address prevOwner,
-        uint256 prevBlock, uint256 exitingBlock)
-        private
-    {
+        uint256 prevBlock,
+        uint256 exitingBlock
+    ) private {
         // Create exit
         Coin storage c = coins[slot];
         c.exit = Exit({
@@ -407,6 +404,7 @@ contract RootChain is IERC721Receiver {
     ///      state which will allow it to be withdrawn, provided the exit has
     ///      matured and has not been successfully challenged
     function finalizeExit(uint64 slot) isState(slot, State.EXITING) public {
+
         Coin storage coin = coins[slot];
         require((block.timestamp - coin.exit.createdAt) > MATURITY_PERIOD, "You must wait the maturity period before finalizing the exit");
 
@@ -434,6 +432,7 @@ contract RootChain is IERC721Receiver {
     }
 
     function checkPendingChallenges(uint64 slot) private returns (bool hasChallenges) {
+
         uint256 length = challenges[slot].length;
         bool slashed;
         hasChallenges = false;
@@ -457,6 +456,7 @@ contract RootChain is IERC721Receiver {
     /// @dev Iterates through all of the initiated exits and finalizes those
     ///      which have matured without being successfully challenged
     function finalizeExits(uint64[] calldata slots) external {
+
         uint256 slotsLength = slots.length;
         for (uint256 i = 0; i < slotsLength; i++) {
             finalizeExit(slots[i]);
@@ -464,6 +464,7 @@ contract RootChain is IERC721Receiver {
     }
 
     function cancelExit(uint64 slot) public {
+
         require(coins[slot].exit.owner == msg.sender, "Only coin's owner is allowed to cancel the exit");
         delete coins[slot].exit;
         coins[slot].state = State.NOT_EXITING;
@@ -472,6 +473,7 @@ contract RootChain is IERC721Receiver {
     }
 
     function cancelExits(uint64[] calldata slots) external {
+
         uint256 slotsLength = slots.length;
         for (uint256 i = 0; i < slotsLength; i++) {
             cancelExit(slots[i]);
@@ -481,6 +483,7 @@ contract RootChain is IERC721Receiver {
     /// @dev Withdraw a UTXO that has been exited
     /// @param slot The slot of the coin being withdrawn
     function withdraw(uint64 slot) external isState(slot, State.EXITED) {
+
         require(coins[slot].owner == msg.sender, "You do not own that UTXO");
         uint256 uid = coins[slot].uid;
 
@@ -512,11 +515,9 @@ contract RootChain is IERC721Receiver {
         uint64 slot,
         bytes calldata txBytes,
         bytes calldata txInclusionProof,
-        uint256 blockNumber)
-        external
-        payable isBonded
-        isState(slot, State.EXITING)
-    {
+        uint256 blockNumber
+    ) external payable isBonded isState(slot, State.EXITING) {
+
         checkBefore(slot, txBytes, txInclusionProof, blockNumber);
         setChallenged(slot, txBytes.getOwner(), blockNumber, txBytes.getHash());
     }
@@ -538,9 +539,8 @@ contract RootChain is IERC721Receiver {
         uint256 respondingBlockNumber,
         bytes calldata respondingTransaction,
         bytes calldata proof,
-        bytes calldata signature)
-        external
-    {
+        bytes calldata signature
+    ) external {
         // Check that the transaction being challenged exists
         require(challenges[slot].contains(challengingTxHash), "Responding to non existing challenge");
 
@@ -563,10 +563,7 @@ contract RootChain is IERC721Receiver {
         bytes memory txBytes,
         bytes memory signature,
         bytes memory proof
-    )
-        private
-        view
-    {
+    ) private view {
         Transaction.TX memory txData = checkTxValid(txBytes, proof, blockNumber);
         require(txData.hash.ecverify(signature, challenges[slot][index].owner), "Invalid signature");
         require(txData.slot == slot, "Tx is referencing another slot");
@@ -579,9 +576,9 @@ contract RootChain is IERC721Receiver {
         bytes calldata challengingTransaction,
         bytes calldata proof,
         bytes calldata signature,
-        uint256 challengingBlockNumber)
-        external isState(slot, State.EXITING)
-    {
+        uint256 challengingBlockNumber
+    ) external isState(slot, State.EXITING) {
+
         checkBetween(slot, challengingTransaction, proof, signature, challengingBlockNumber);
         applyPenalties(slot);
     }
@@ -591,10 +588,9 @@ contract RootChain is IERC721Receiver {
         bytes calldata challengingTransaction,
         bytes calldata proof,
         bytes calldata signature,
-        uint256 challengingBlockNumber)
-        external
-        isState(slot, State.EXITING)
-    {
+        uint256 challengingBlockNumber
+    ) external isState(slot, State.EXITING) {
+
         checkAfter(slot, challengingTransaction, proof, signature, challengingBlockNumber);
         applyPenalties(slot);
     }
@@ -606,10 +602,9 @@ contract RootChain is IERC721Receiver {
         uint64 slot,
         bytes memory txBytes,
         bytes memory proof,
-        uint blockNumber)
-        private
-        view
-    {
+        uint blockNumber
+    ) private view {
+
         require(
             blockNumber <= coins[slot].exit.prevBlock,
             "Tx should be before the exit's parent block"
@@ -627,10 +622,9 @@ contract RootChain is IERC721Receiver {
         bytes memory txBytes,
         bytes memory proof,
         bytes memory signature,
-        uint blockNumber)
-        private
-        view
-    {
+        uint blockNumber
+    ) private view {
+
         require(
             coins[slot].exit.exitBlock > blockNumber &&
             coins[slot].exit.prevBlock < blockNumber,
@@ -647,7 +641,9 @@ contract RootChain is IERC721Receiver {
         bytes memory txBytes,
         bytes memory proof,
         bytes memory signature,
-        uint blockNumber) private view {
+        uint blockNumber
+    ) private view {
+
         require(
             coins[slot].exit.exitBlock < blockNumber,
             "Tx should be after the exitBlock"
@@ -660,6 +656,7 @@ contract RootChain is IERC721Receiver {
     }
 
     function applyPenalties(uint64 slot) private {
+
         // Apply penalties and change state
         slashBond(coins[slot].exit.owner, msg.sender);
         coins[slot].state = State.NOT_EXITING;
@@ -670,11 +667,12 @@ contract RootChain is IERC721Receiver {
     /// @param slot The slot of the coin being challenged
     /// @param owner The user claimed to be the true owner of the coin
     function setChallenged(uint64 slot, address owner, uint256 challengingBlockNumber, bytes32 txHash) private {
+
         // Require that the challenge is in the first half of the challenge window
         require(block.timestamp <= coins[slot].exit.createdAt + CHALLENGE_WINDOW, "Challenge windows is over");
 
         require(!challenges[slot].contains(txHash),
-                "Transaction used for challenge already");
+            "Transaction used for challenge already");
 
         // Need to save the exiting transaction's owner, to verify
         // that the response is valid
@@ -693,12 +691,14 @@ contract RootChain is IERC721Receiver {
     /******************** BOND RELATED ********************/
 
     function freeBond(address from) private {
+
         balances[from].bonded = balances[from].bonded.sub(BOND_AMOUNT);
         balances[from].withdrawable = balances[from].withdrawable.add(BOND_AMOUNT);
         emit FreedBond(from, BOND_AMOUNT);
     }
 
     function withdrawBonds() external {
+
         // Can only withdraw bond if the msg.sender
         uint256 amount = balances[msg.sender].withdrawable;
         balances[msg.sender].withdrawable = 0; // no reentrancy!
@@ -708,6 +708,7 @@ contract RootChain is IERC721Receiver {
     }
 
     function slashBond(address from, address to) private {
+
         balances[from].bonded = balances[from].bonded.sub(BOND_AMOUNT);
         balances[to].withdrawable = balances[to].withdrawable.add(BOND_AMOUNT);
         emit SlashedBond(from, to, BOND_AMOUNT);
@@ -719,10 +720,9 @@ contract RootChain is IERC721Receiver {
         bytes memory prevTxBytes, bytes memory exitingTxBytes,
         bytes memory prevTxInclusionProof, bytes memory exitingTxInclusionProof,
         bytes memory signature,
-        uint256[2] memory blocks)
-        private
-        view
-    {
+        uint256[2] memory blocks
+    ) private view {
+
         require(blocks[0] < blocks[1], "Block on the first index must be the earlier of the 2 blocks");
 
         Transaction.TX memory prevTxData    = checkTxValid(prevTxBytes, prevTxInclusionProof, blocks[0]);
@@ -738,10 +738,9 @@ contract RootChain is IERC721Receiver {
     function checkTX(
         bytes memory txBytes,
         bytes memory proof,
-        uint256 blockNumber)
-    public
-    view
-    {
+        uint256 blockNumber
+    ) public view {
+
         checkTxValid(txBytes, proof, blockNumber);
     }
 
@@ -749,10 +748,9 @@ contract RootChain is IERC721Receiver {
     function checkTxValid(
         bytes memory txBytes,
         bytes memory proof,
-        uint256 blockNumber)
-    private
-    view returns(Transaction.TX memory)
-    {
+        uint256 blockNumber
+    ) private view returns(Transaction.TX memory) {
+
         RLPReader.RLPItem[] memory rlpTx = txBytes.toRLPItems();
 
         if(rlpTx.isBasicTransaction()) {
@@ -797,10 +795,7 @@ contract RootChain is IERC721Receiver {
         bytes32 txHash,
         uint256 blockNumber,
         bytes memory proof
-    )
-        private
-        view
-    {
+    ) private view {
         bytes32 root = childChain[blockNumber].root;
 
         if (blockNumber % childBlockInterval != 0) {
@@ -814,8 +809,8 @@ contract RootChain is IERC721Receiver {
                     root,
                     slot,
                     proof
-            ),
-            "Tx not included in claimed block"
+                ),
+                "Tx not included in claimed block"
             );
         }
     }
@@ -825,10 +820,8 @@ contract RootChain is IERC721Receiver {
         bytes32 secret,
         uint256 blockNumber,
         bytes memory proof
-    )
-    private
-    view
-    {
+    ) private view {
+
         bytes32 root = secretRevealingChain[blockNumber].root;
         require(blockNumber % childBlockInterval == 0, "Trying to validate an atomic swap for a deposit block");
         // Check against merkle tree for all other block numbers
@@ -860,9 +853,9 @@ contract RootChain is IERC721Receiver {
         require(false, "This contract does not receive money");
     }
 
-    function onERC721Received(address /*operator*/, address from, uint256 tokenId, bytes memory /*data*/) public isTokenApproved(msg.sender)
-    returns (bytes4)
-     {
+    function onERC721Received(address /*operator*/, address from, uint256 tokenId, bytes memory /*data*/)
+    public isTokenApproved(msg.sender) returns (bytes4) {
+
         require(ERC721(msg.sender).ownerOf(tokenId) == address(this), "Token was not transfered correctly");
         deposit(from, msg.sender, tokenId);
         return this.onERC721Received.selector;
@@ -880,8 +873,9 @@ contract RootChain is IERC721Receiver {
         bytes32 txHash,
         bytes32 root,
         uint64 slot,
-        bytes memory proof) public view returns (bool)
-    {
+        bytes memory proof
+    ) public view returns (bool) {
+
         return smt.checkMembership(
             txHash,
             root,
@@ -895,6 +889,7 @@ contract RootChain is IERC721Receiver {
         uint64 slot,
         bytes memory proof
     ) public view returns (bool) {
+
         ChildBlock memory childBlock = childChain[blockNumber];
         if (blockNumber % childBlockInterval != 0) {
             return txHash == childBlock.root && keccak256(abi.encodePacked(slot)) == childBlock.root;
@@ -908,26 +903,27 @@ contract RootChain is IERC721Receiver {
         bytes calldata proof,
         uint256 blockNumber
     ) external view returns (bool) {
+
         checkTxValid(txBytes, proof, blockNumber);
         return true;
     }
 
     function getPlasmaCoin(uint64 slot) external view returns(uint256, uint256, address, State, address) {
+
         Coin memory c = coins[slot];
         return (c.uid, c.depositBlock, c.owner, c.state, c.contractAddress);
     }
 
     function getChallenge(uint64 slot, bytes32 txHash)
-        external
-        view
-        returns(address, address, bytes32, uint256)
-    {
+    external view returns(address, address, bytes32, uint256) {
+
         uint256 index = uint256(challenges[slot].indexOf(txHash));
         ChallengeLib.Challenge memory c = challenges[slot][index];
         return (c.owner, c.challenger, c.txHash, c.challengingBlockNumber);
     }
 
     function getChallenges(uint64 slot) external view returns(bytes32[] memory) {
+
         uint length = challenges[slot].length;
         bytes32[] memory slotChallenges = new bytes32[](length);
         for (uint i = 0; i < length; i++) {
