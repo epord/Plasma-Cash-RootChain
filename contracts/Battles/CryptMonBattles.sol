@@ -77,7 +77,7 @@ contract CryptoMonBattles is PlasmaTurnGame, Ownable {
         cryptomons = _cryptomons;
     }
 
-    function validateStartState(bytes calldata state, address[2] calldata players, bytes calldata exitData) external view returns (RootChain.Exit [] memory result){
+    function validateStartState(bytes calldata state, address[2] calldata players, bytes calldata exitData) external view returns (RootChain.Exit[] memory){
         RLPReader.RLPItem[] memory start = state.toRlpItem().toList();
         require(start.length == uint(Battle.ChargeOP) + 1, "Invalid RLP start length");
 
@@ -148,7 +148,10 @@ contract CryptoMonBattles is PlasmaTurnGame, Ownable {
                 exitBlock: blocks[1]
                 });
         }
+
+        RootChain.Exit[] memory result = new RootChain.Exit[](1);
         result[0] = exit;
+        return result;
     }
 
     function validateTurnTransition(bytes memory oldState, uint turnNum, bytes memory newState) public view {

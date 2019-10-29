@@ -250,8 +250,7 @@ contract PlasmaCM {
         uint256 blockNumber
     ) external payable channelExists(channelId) isChallengeable(channelId) Bonded {
 
-        RootChain.Exit memory exit = exits[channelId][index];
-        require(block.timestamp <= channel[channelId].fundedTimestamp + CHALLENGE_PERIOD, "Challenge windows is over");
+        require(block.timestamp <= channels[channelId].fundedTimestamp + CHALLENGE_PERIOD, "Challenge window is over");
         checkBefore(exits[channelId][index], txBytes, txInclusionProof, blockNumber);
         bytes32 txHash = txBytes.getHash();
         require(!challenges[channelId].contains(txHash), "Transaction used for challenge already");
@@ -413,14 +412,13 @@ contract PlasmaCM {
     function closeChallengedChannel(
         uint channelId
     ) external channelExists(channelId) isSuspended(channelId) {
-        RootChain.Exit memory exit = exits[channelId][index];
         FMChannel storage channel = channels[channelId];
         require(block.timestamp >= channel.fundedTimestamp + CHALLENGE_RESPOND_PERIOD, "Challenge respond window isnt over");
 
         ChallengeLib.Challenge memory firstChallenge = challenges[channelId][0];
         channel.state = ChannelState.CHALLENGED;
         funds[firstChallenge.challenger] += channel.stake * 2;
-        emit ChannelChallenged(channelId, index, channel.players[0], channel.players[1], firstChallenge.challenger);
+        emit ChannelChallenged(channelId, 0, channel.players[0], channel.players[1], firstChallenge.challenger);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////
