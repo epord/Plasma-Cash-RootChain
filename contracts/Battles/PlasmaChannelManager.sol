@@ -240,14 +240,6 @@ contract PlasmaCM {
         msg.sender.transfer(value);
     }
 
-    function getFunds(address user) external view returns (uint) {
-        return funds[user];
-    }
-
-    function getChannel(uint channelId) external view returns (FMChannel memory) {
-        return channels[channelId];
-    }
-
     ///////////////////////////////////////////////////////////////////////////////////
     ////
     ////            Plasma Challenges
@@ -432,6 +424,28 @@ contract PlasmaCM {
         emit ChannelChallenged(channelId, 0, channel.players[0], channel.players[1], firstChallenge.challenger);
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////
+    ////
+    ////            Getters
+    ////
+    //////////////////////////////////////////////////////////////////////////////////
+    function getFunds(address user) external view returns (uint) {
+        return funds[user];
+    }
+
+    function getChannel(uint channelId) external view returns (FMChannel memory) {
+        return channels[channelId];
+    }
+
+    function getExit(uint channelId, uint index) external view returns (RootChain.Exit memory) {
+        return exits[channelId][index];
+    }
+
+    function getChallenge(uint channelId, bytes32 txHash) external view returns (ChallengeLib.Challenge memory) {
+
+        uint256 index = uint256(challenges[channelId].indexOf(txHash));
+        return challenges[channelId][index];
+    }
     ///////////////////////////////////////////////////////////////////////////////////
     ////
     ////            Modifiers
