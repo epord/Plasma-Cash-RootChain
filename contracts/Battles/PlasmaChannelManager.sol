@@ -384,7 +384,7 @@ contract PlasmaCM {
             _proof
         );
 
-        funds[msg.sender] = funds[msg.sender] + CHALLENGE_BOND;
+        funds[msg.sender] += CHALLENGE_BOND;
         FMChannel storage channel = channels[_channelId];
         cChallenges.removeAt(_index);
 
@@ -418,8 +418,15 @@ contract PlasmaCM {
         FMChannel storage channel = channels[channelId];
         require(block.timestamp >= channel.fundedTimestamp + CHALLENGE_RESPOND_PERIOD, "Challenge respond window isnt over");
 
-        ChallengeLib.Challenge memory firstChallenge = challenges[channelId][0];
+        ChallengeLib.Challenge[] memory channelChallenges = challenges[channelId];
+        ChallengeLib.Challenge memory firstChallenge = channelChallenges[0];
+
+        for(uint i=0; i<channelChallenges.length; i++) {
+            funds[channelChallenges[i].challenger] += CHALLENGE_BOND;
+        }
+
         channel.state = ChannelState.CHALLENGED;
+        ChallengeLib.Challenge memory firstChallenge = channelChallenges[0];
         funds[firstChallenge.challenger] += channel.stake * 2;
         emit ChannelChallenged(channelId, 0, channel.players[0], channel.players[1], firstChallenge.challenger);
     }
