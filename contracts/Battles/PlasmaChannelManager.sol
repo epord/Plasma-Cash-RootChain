@@ -29,16 +29,16 @@ contract PlasmaCM {
     event ChannelFunded(uint channelId, address indexed creator, address indexed opponent, address channelType, bytes initialState);
     event ChannelConcluded(uint channelId, address indexed creator, address indexed opponent, address channelType);
     event ChannelChallenged(
-        uint channelId, uint exitIndex,
-        address indexed creator, address indexed opponent, address indexed challenger
+        uint indexed channelId, uint exitIndex,
+        address indexed creator, address indexed opponent, address challenger
     );
     event ChallengeRequest(
-        uint channelId, uint exitIndex, bytes32 txHash,
-        address indexed creator, address indexed opponent, address indexed challenger
+        uint indexed channelId, uint exitIndex, bytes32 txHash,
+        address indexed creator, address indexed opponent, address challenger
     );
     event ChallengeResponded(
-        uint channelId, uint exitIndex, bytes32 txHash,
-        address indexed creator, address indexed opponent, address indexed challenger
+        uint indexed channelId, uint exitIndex, bytes32 txHash,
+        address indexed creator, address indexed opponent, address challenger
     );
     event ForceMoveResponded(uint indexed channelId, State.StateStruct nextState, bytes signature);
 

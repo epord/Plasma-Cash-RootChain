@@ -938,12 +938,12 @@ contract RootChain is IERC721Receiver {
         return (e.owner, e.prevBlock, e.exitBlock, coins[slot].state, e.createdAt);
     }
 
-    function getBlockRoot(uint256 blockNumber) public view returns (bytes32 root) {
-        root = childChain[blockNumber].root;
+    function getBlock(uint256 blockNumber) public view returns (bytes32, uint) {
+        return(childChain[blockNumber].root, childChain[blockNumber].createdAt);
     }
 
-    function getSecretBlockRoot(uint256 blockNumber) public view returns (bytes32 root) {
-        root = secretRevealingChain[blockNumber].root;
+    function getSecretBlock(uint256 blockNumber) public view returns (bytes32, uint) {
+        return(secretRevealingChain[blockNumber].root, secretRevealingChain[blockNumber].createdAt);
     }
 
     function getBalance() external view returns(uint256, uint256) {
