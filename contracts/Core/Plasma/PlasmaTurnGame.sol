@@ -1,10 +1,10 @@
 pragma solidity ^0.5.2;
 pragma experimental ABIEncoderV2;
 
-import "./PlasmaChannelManager.sol";
+import "./RootChain.sol";
 
 interface PlasmaTurnGame {
-    function validateStartState(bytes calldata state, address[2] calldata players, bytes calldata exitData)
+    function validateStartState(bytes calldata state, address[2] calldata players, uint exitDataIndex, bytes calldata exitData)
         external view returns (RootChain.Exit[] memory);
 
     function validateTurnTransition(bytes calldata oldstate, uint oldturnNum, bytes calldata newstate) external view;

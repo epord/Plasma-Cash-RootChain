@@ -3,16 +3,28 @@ pragma experimental ABIEncoderV2;
 
 import "./State.sol";
 import "./Rules.sol";
-import "./PlasmaTurnGame.sol";
-import "./PlasmaChannelManager.sol";
 
+import "../../Core/Plasma/PlasmaChannelManager.sol";
 
+/**
+ * Library Adjudicators for coin deposit logging.
+ * Library in charge of validating valid moves for a PlasmaCM.FMChannel and
+ *         managing the force moves challenges in it.
+ */
 library Adjudicators {
 
     using State for State.StateStruct;
 
     uint constant CHALLENGE_DURATION = 10 * 1 minutes;
 
+    /**
+     * @dev Allows the creation of a forceMove Challenge for the first move in a channel.
+     * @notice Modifies the channel's forceMoveChallenge if there isn't any
+     * @param channel The FMChannel to force a move in
+     * @param initialState The initial state of the channel. Must comply with the initialArgumentsHash of the channel.
+                           Will be the starting point to validate the forceMove response
+     * @param issuer The address of the forceMove challenge requester
+     */
     function forceFirstMove(
         PlasmaCM.FMChannel storage channel,
         State.StateStruct memory initialState,
@@ -27,6 +39,17 @@ library Adjudicators {
         createChallenge(channel, uint32(now + CHALLENGE_DURATION), initialState, issuer);
     }
 
+    /**
+     * @dev Allows the creation of a forceMove Challenge for the any move in a channel.
+     * @notice Modifies the channel's forceMoveChallenge if there isn't any.
+     * @notice Either the fromState or toState must be signed one by each of the channel's participants to be a valid
+               transition, so it is ok to assume both parties agreed on these states.
+     * @param channel     The FMChannel to force a move in
+     * @param fromState   The previous to current state of the channel
+     * @param toState     The current state of the channel. Must be a valid transition from fromState
+     * @param issuer      The address of the forceMove challenge requester
+     * @param signatures  The signatures (array of size 2) corresponding to fromState and toState in that order
+     */
     function forceMove(
         PlasmaCM.FMChannel storage channel,
         State.StateStruct memory fromState,
@@ -49,7 +72,13 @@ library Adjudicators {
         createChallenge(channel, uint32(now + CHALLENGE_DURATION), toState, issuer);
     }
 
-    //Respond is used to cancel your opponent's challenge
+    /**
+     * @dev Allows the response of an active forceMove Challenge.
+     * @notice Removes the channel's forceMoveChallenge if there is any.
+     * @param channel     The FMChannel to force a move in
+     * @param nextState   The next state of the channel. Must be a valid transition from the challenge's state.
+     * @param signature   The signature corresponding to nextState
+     */
     function respondWithMove(
         PlasmaCM.FMChannel storage channel,
         State.StateStruct memory nextState,
@@ -63,10 +92,22 @@ library Adjudicators {
         cancelCurrentChallenge(channel);
     }
 
+    /**
+     * @dev Allows the response of an active forceMove Challenge by canceling with a different state signed by the
+            challenge's issuer. Then proceeds to create a challenge for the alternativeState.
+     * @notice Changes the channel's forceMoveChallenge if there is any.
+     * @param channel           The FMChannel to force a move in
+     * @param alternativeState  The state replacing the challenge's state. Must have the same turnNum as it,
+                                and thus, be signed by the same person.
+     * @param nextState         The next state of the channel. Must be a valid transition from the alternativeState.
+     * @param issuer            The address of the forceMove challenge responder
+     * @param signatures        The signatures (array of size 2) corresponding to alternativeState and nextState in that order
+     */
     function alternativeRespondWithMove(
         PlasmaCM.FMChannel storage channel,
         State.StateStruct memory alternativeState,
         State.StateStruct memory nextState,
+        address issuer,
         bytes[] memory signatures
     )
     public
@@ -76,9 +117,17 @@ library Adjudicators {
         //AlternativeState will never be the first state since the hash vaidate in the forceMoveChannel
         Rules.validateAlternativeRespondWithMove(channel.forceMoveChallenge.state, alternativeState, nextState, signatures);
         cancelCurrentChallenge(channel);
+        createChallenge(channel, uint32(now + CHALLENGE_DURATION), nextState, issuer);
     }
 
-    //TODO revise this
+    /**
+     * @dev Allows the response of an active forceMove Challenge by refuting the challenge providing a newer state signed
+            by the challenger.
+     * @notice Removes the channel's forceMoveChallenge if there is any.
+     * @param channel        The FMChannel to force a move in
+     * @param refutingState  The state refuting the challenge's state. Must have a higher turnNum and be signed by the issuer.
+     * @param signature      The signature corresponding to refutingState
+     */
     function refute(
         PlasmaCM.FMChannel storage channel,
         State.StateStruct memory refutingState,
@@ -92,6 +141,17 @@ library Adjudicators {
         cancelCurrentChallenge(channel);
     }
 
+    /**
+     * @dev Allows the conclusion of a channel by providing the last State of it.
+     * @notice Creates an expired challenge with the state as the last state and the issuer as the winner.
+     * @notice Either the penultimateState or ultimateState must be signed one by each of the channel's participants
+               to be a valid transition, so it is ok to assume both parties agreed on these states.
+     * @param channel          The FMChannel to force a move in
+     * @param penultimateState The previous to last state of the channel
+     * @param ultimateState    The last state of the channel. Must be a valid transition from penultimateState
+                               and a valid ending state
+     * @param signatures       The signatures (array of size 2) corresponding to penultimateState and ultimateState in that order
+     */
     function conclude(
         PlasmaCM.FMChannel storage channel,
         State.StateStruct memory penultimateState,

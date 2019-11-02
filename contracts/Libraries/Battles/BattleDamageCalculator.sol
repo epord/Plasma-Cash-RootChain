@@ -1,10 +1,7 @@
 pragma solidity ^0.5.2;
 pragma experimental ABIEncoderV2;
 
-import "./PlasmaTurnGame.sol";
-import "../Core/RootChain.sol";
-import "../Core/CryptoMons.sol";
-import "../Libraries/Pokedex.sol";
+import "../Pokedex.sol";
 
 library BattleDamageCalculator {
 

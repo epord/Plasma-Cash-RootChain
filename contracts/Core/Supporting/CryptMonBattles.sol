@@ -1,13 +1,15 @@
 pragma solidity ^0.5.2;
 pragma experimental ABIEncoderV2;
 
-import "./PlasmaTurnGame.sol";
-import "../Core/RootChain.sol";
-import "../Core/CryptoMons.sol";
-import "../Libraries/Pokedex.sol";
-import "./BattleDamageCalculator.sol";
 import "openzeppelin-solidity/contracts/ownership/Ownable.sol";
-import "./PlasmaChannelManager.sol";
+
+import "../Plasma/PlasmaTurnGame.sol";
+import "./CryptoMons.sol";
+
+import "../../Libraries/Battles/BattleDamageCalculator.sol";
+import "../../Libraries/Transaction/RLPReader.sol";
+import "../../Libraries/Transaction/Transaction.sol";
+
 
 contract CryptoMonBattles is PlasmaTurnGame, Ownable {
 
@@ -80,6 +82,7 @@ contract CryptoMonBattles is PlasmaTurnGame, Ownable {
     function validateStartState(
         bytes calldata state,
         address[2] calldata players,
+        uint exitDataIndex,
         bytes calldata exitData
     ) external view returns (RootChain.Exit[] memory) {
 
@@ -156,6 +159,7 @@ contract CryptoMonBattles is PlasmaTurnGame, Ownable {
 
         RootChain.Exit[] memory result = new RootChain.Exit[](1);
         result[0] = exit;
+        require(exit.owner == players[exitDataIndex], "Exit Data must be corresponding to the player or the opponent in each case");
         return result;
     }
 

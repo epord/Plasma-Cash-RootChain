@@ -1,15 +1,14 @@
 pragma solidity ^0.5.2;
 pragma experimental ABIEncoderV2;
 
-import "./Adjudicator.sol";
-import "./Rules.sol";
-import "./State.sol";
 import "openzeppelin-solidity/contracts/drafts/Counters.sol";
-import "../Libraries/ChallengeLib.sol";
-import "../Libraries/ECVerify.sol";
-import "./PlasmaTurnGame.sol";
-import "../Core/RootChain.sol";
 
+import "./PlasmaTurnGame.sol";
+
+import "../../Libraries/Battles/Adjudicator.sol";
+import "../../Libraries/Transaction/Transaction.sol";
+import "../../Libraries/ChallengeLib.sol";
+import "../../Libraries/Battles/Rules.sol";
 
 //Plasma Channel Manager
 contract PlasmaCM {
@@ -21,31 +20,109 @@ contract PlasmaCM {
     using ChallengeLib for ChallengeLib.Challenge[];
 
     ///////////////////////////////////////////////////////////////////////////////////
-    ////
-    ////            EVENTS
-    ////
+    ////   EVENTS
     //////////////////////////////////////////////////////////////////////////////////
+
+    /**
+     * Event for channel initiated waiting for opponent's response.
+     * @param channelId   Unique identifier of the channel
+     * @param creator     Creator of the channel, also known as player
+     * @param opponent    Opponent of the channel, require to fund to start the channel
+     * @param channelType The address of PlasmaTurnGame implementation contract which determines the game
+     */
     event ChannelInitiated(uint channelId, address indexed creator, address indexed opponent, address channelType);
+
+    /**
+     * Event for channel funding, after both participants have secured the stake and agreed on an initial state.
+     * @param channelId    Unique identifier of the channel
+     * @param creator      Creator of the channel, also known as player
+     * @param opponent     Opponent of the channel, who funded the channel
+     * @param channelType  The address of PlasmaTurnGame implementation contract which determines the game
+     * @param initialState The encoded state, determined how to be decoded by the channelType, that will be defined as
+                           the starting point of this channel, that both parties agreed on.
+     */
     event ChannelFunded(uint channelId, address indexed creator, address indexed opponent, address channelType, bytes initialState);
+
+    /**
+     * Event for channel conclusion
+     * @notice A channel can be concluded by:
+                A) Being close in an unfunded state by the creator
+                B) Being close in case of a force move challenge is not answered
+                C) The final states are provided and validated
+     * @param channelId   Unique identifier of the channel
+     * @param creator     Creator of the channel, also known as player
+     * @param opponent    Opponent of the channel
+     * @param channelType The address of PlasmaTurnGame implementation contract which determines the game
+     */
     event ChannelConcluded(uint channelId, address indexed creator, address indexed opponent, address channelType);
+
+    /**
+     * Event for the closure of a channel due to a Plasma challenge being issued.
+     * @notice This event is generated when ChallengeAfter or ChallengeBetween is called, closing the channel and giving
+               the stake to the challenger.
+     * @param channelId   Unique identifier of the channel
+     * @param exitIndex   Index corresponding to the exit's index to be challenged
+     * @param creator     Creator of the channel, also known as player
+     * @param opponent    Opponent of the channel
+     * @param challenger  Address of the challenge issuer
+     */
     event ChannelChallenged(
         uint indexed channelId, uint exitIndex,
         address indexed creator, address indexed opponent, address challenger
     );
+
+    /**
+     * Event for the creation of a Plasma challenge inside a channel.
+     * @notice This event is generated when ChallengeBefore is called, forcing someone to ask the challenge before
+               the challenge window ends or surrendering the channel's stake.
+     * @param channelId   Unique identifier of the channel
+     * @param exitIndex   Index corresponding to the exit's index to be challenged
+     * @param txHash      Hash of the challenging transaction
+     * @param creator     Creator of the channel, also known as player
+     * @param opponent    Opponent of the channel
+     * @param challenger  Address of the challenge issuer
+     */
     event ChallengeRequest(
         uint indexed channelId, uint exitIndex, bytes32 txHash,
         address indexed creator, address indexed opponent, address challenger
     );
+
+    /**
+      * Event for the response of a Plasma challenge inside a channel.
+      * @notice This event is generated when respondChallengeBefore is called, invalidating the plasma challenge.
+      * @param channelId   Unique identifier of the channel
+      * @param exitIndex   Index corresponding to the exit's index challenged
+      * @param txHash      Hash of the challenging transaction
+      * @param creator     Creator of the channel, also known as player
+      * @param opponent    Opponent of the channel
+      * @param challenger  Address of the challenge issuer
+      */
     event ChallengeResponded(
         uint indexed channelId, uint exitIndex, bytes32 txHash,
         address indexed creator, address indexed opponent, address challenger
     );
+
+    /**
+      * Event for the request of Force Move challenge inside a channel.
+      * @notice This event is generated when ForceMove or alternativeRespondWithMove is called, forcing a player
+                to answer or surrender the channel's stake.
+      * @param channelId   Unique identifier of the channel
+      * @param state       Game State to be answered to
+      */
+    event ForceMoveRequested(uint indexed channelId, State.StateStruct state);
+
+    /**
+      * Event for the response of Force Move challenge inside a channel.
+      * @notice This event is generated when respondWithMove or alternativeRespondWithMove is called, notifying the players
+                of the state to continue from the channel
+      * @param channelId   Unique identifier of the channel
+      * @param nextState   Game State answer, to be used to continue the channel
+      * @param signature   Signature corresponding to nextState
+      */
     event ForceMoveResponded(uint indexed channelId, State.StateStruct nextState, bytes signature);
 
     ///////////////////////////////////////////////////////////////////////////////////
-    ////
-    ////            STRUCTS
-    ////
+    ////            VARIABLES
     //////////////////////////////////////////////////////////////////////////////////
     enum ChannelState { INITIATED, FUNDED, SUSPENDED, CLOSED, CHALLENGED }
 
@@ -83,10 +160,20 @@ contract PlasmaCM {
     }
 
     ///////////////////////////////////////////////////////////////////////////////////
-    ////
-    ////            Channel Creation
-    ////
+    ////            Channel Creation and Closure
     //////////////////////////////////////////////////////////////////////////////////
+
+    /**
+      * @dev Allows a player to create a Force Move Channel against an opponent, staking an amount of ether declaring
+      *      the winner of it to be able to reclaim it, using within it any plasma tokens deposited on rootChain.
+      * @notice Appends a FMChannel to channels, ExitData to exits.
+      * @param channelType  The address of the contract implementing PlasmaTurnGame interface to determine the type of game
+      * @param opponent     The address of the user who will be facing the creator
+      * @param stake        The amount of money to be staking. Same amount of ether must accompany the function call.
+      * @param initialGameAttributes The encoded initial state to be decoded by the channelType
+      * @param exitData     The encoded exitData to be decoded by the channelType of the creator's plasma tokens being used by
+      *                     the creator.
+      */
     function initiateChannel(
         address channelType,
         address opponent,
@@ -101,17 +188,17 @@ contract PlasmaCM {
         addresses[0] = msg.sender;
         addresses[1] = opponent;
 
-        RootChain.Exit[] memory exitPlayer = ((PlasmaTurnGame)(channelType))
-            .validateStartState(initialGameAttributes, addresses,  exitData);
-        for(uint i; i<exitPlayer.length; i++) {
-            exits[channelCounter.current()].push(exitPlayer[i]);
+        RootChain.Exit[] memory exited = PlasmaTurnGame(channelType).validateStartState(
+            initialGameAttributes, addresses, 0, exitData);
+        for(uint i; i < exited.length; i++) {
+            exits[channelCounter.current()].push(exited[i]);
         }
 
         Rules.Challenge memory challenge;
         FMChannel memory channel = FMChannel(
             channelCounter.current(),
             channelType,
-            0,
+            0, // to be filled when channel is funded
             stake,
             addresses,
             keccak256(initialGameAttributes),
@@ -120,9 +207,10 @@ contract PlasmaCM {
         );
 
         channels[channel.channelId] = channel;
-        emit ChannelInitiated(channel.channelId, channel.players[0], channel.players[1], channel.channelType);
 
-        ((PlasmaTurnGame)(channelType)).eventRequestState(
+        // Emit events
+        emit ChannelInitiated(channel.channelId, channel.players[0], channel.players[1], channel.channelType);
+        PlasmaTurnGame(channelType).eventRequestState(
             channel.channelId,
             initialGameAttributes,
             channel.players[0],
@@ -130,6 +218,15 @@ contract PlasmaCM {
         );
     }
 
+    /**
+      * @dev Allows a player respond to a channel creation, funding it.
+      *      the winner of it to be able to reclaim it, using within it any plasma tokens deposited on rootChain.
+      * @notice Appends ExitData to exits, sets the fundedTimestamp for the channel
+      * @param channelId   Unique identifier of the channel
+      * @param initialGameAttributes The encoded initial state to be decoded by the channelType
+      * @param exitData     The encoded exitData to be decoded by the channelType of the plasma tokens being used by
+      *                     the opponent.
+      */
     function fundChannel(
         uint channelId,
         bytes calldata initialGameAttributes,
@@ -144,15 +241,20 @@ contract PlasmaCM {
         require(channel.initialArgumentsHash == keccak256(initialGameAttributes), "Initial state does not match");
         channel.state = ChannelState.FUNDED;
         channel.fundedTimestamp = block.timestamp;
-        RootChain.Exit[] memory exitOpponent = ((PlasmaTurnGame)(channel.channelType))
-            .validateStartState(initialGameAttributes, channel.players,  exitData);
+        RootChain.Exit[] memory exitOpponent = PlasmaTurnGame(channel.channelType)
+            .validateStartState(initialGameAttributes, channel.players, 1, exitData);
         for(uint i; i<exitOpponent.length; i++) {
             exits[channel.channelId].push(exitOpponent[i]);
         }
         emit ChannelFunded(channel.channelId, channel.players[0], channel.players[1], channel.channelType, initialGameAttributes);
-        ((PlasmaTurnGame)(channel.channelType)).eventStartState(channelId, initialGameAttributes, channel.players[0], channel.players[1]);
+        PlasmaTurnGame(channel.channelType).eventStartState(channelId, initialGameAttributes, channel.players[0], channel.players[1]);
     }
 
+    /**
+      * @dev Allows a creator of a channel to close if it is unfunded and retrieve the stakes.
+      * @notice Sets channel' state to closed
+      * @param channelId   Unique identifier of the channel
+      */
     function closeUnfundedChannel(uint channelId) external channelExists(channelId) {
         FMChannel storage channel = channels[channelId];
 
@@ -165,54 +267,6 @@ contract PlasmaCM {
         emit ChannelConcluded(channelId, channel.players[0], channel.players[1], channel.channelType);
     }
 
-    ///////////////////////////////////////////////////////////////////////////////////
-    ////
-    ////            Force Moves
-    ////
-    //////////////////////////////////////////////////////////////////////////////////
-    function forceFirstMove(
-        uint channelId,
-        State.StateStruct memory initialState) public channelExists(channelId) isAllowed(channelId) {
-
-        channels[channelId].forceFirstMove(initialState, msg.sender);
-    }
-
-    function forceMove(
-        uint channelId,
-        State.StateStruct memory fromState,
-        State.StateStruct memory nextState,
-        bytes[] memory signatures
-    ) public channelExists(channelId) isAllowed(channelId) {
-
-        channels[channelId].forceMove(fromState, nextState, msg.sender, signatures);
-    }
-
-    function respondWithMove(
-        uint channelId,
-        State.StateStruct memory nextState,
-        bytes memory signature
-    ) public channelExists(channelId) {
-
-        FMChannel storage channel = channels[channelId];
-        channel.respondWithMove(nextState, signature);
-        emit ForceMoveResponded(channelId, nextState, signature);
-    }
-
-    function alternativeRespondWithMove(
-        uint channelId,
-        State.StateStruct memory alternativeState,
-        State.StateStruct memory nextState,
-        bytes[] memory signatures
-    ) public channelExists(channelId) isAllowed(channelId) {
-
-        channels[channelId].alternativeRespondWithMove(alternativeState, nextState, signatures);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////
-    ////
-    ////            End Channel
-    ////
-    //////////////////////////////////////////////////////////////////////////////////
     function conclude(
         uint channelId,
         State.StateStruct memory prevState,
@@ -238,6 +292,49 @@ contract PlasmaCM {
         uint value = funds[msg.sender];
         funds[msg.sender] = 0;
         msg.sender.transfer(value);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////
+    ////            Force Moves
+    //////////////////////////////////////////////////////////////////////////////////
+    function forceFirstMove(
+        uint channelId,
+        State.StateStruct memory initialState) public channelExists(channelId) isAllowed(channelId) {
+
+        channels[channelId].forceFirstMove(initialState, msg.sender);
+    }
+
+    function forceMove(
+        uint channelId,
+        State.StateStruct memory fromState,
+        State.StateStruct memory nextState,
+        bytes[] memory signatures
+    ) public channelExists(channelId) isAllowed(channelId) {
+
+        channels[channelId].forceMove(fromState, nextState, msg.sender, signatures);
+        emit ForceMoveRequested(channelId, nextState);
+    }
+
+    function respondWithMove(
+        uint channelId,
+        State.StateStruct memory nextState,
+        bytes memory signature
+    ) public channelExists(channelId) {
+
+        channels[channelId].respondWithMove(nextState, signature);
+        emit ForceMoveResponded(channelId, nextState, signature);
+    }
+
+    function alternativeRespondWithMove(
+        uint channelId,
+        State.StateStruct memory alternativeState,
+        State.StateStruct memory nextState,
+        bytes[] memory signatures
+    ) public channelExists(channelId) isAllowed(channelId) {
+
+        channels[channelId].alternativeRespondWithMove(alternativeState, nextState, msg.sender, signatures);
+        emit ForceMoveResponded(channelId, nextState, signatures[1]);
+        emit ForceMoveRequested(channelId, nextState);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////

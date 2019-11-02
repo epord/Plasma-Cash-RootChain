@@ -2,7 +2,6 @@ pragma solidity ^0.5.2;
 pragma experimental ABIEncoderV2;
 
 import "./State.sol";
-import "./PlasmaTurnGame.sol";
 
 library Rules {
     using State for State.StateStruct;
