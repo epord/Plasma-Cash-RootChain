@@ -3,13 +3,12 @@ pragma experimental ABIEncoderV2;
 
 import "openzeppelin-solidity/contracts/ownership/Ownable.sol";
 
-import "../Plasma/PlasmaTurnGame.sol";
+import "../../PlasmaCore/RootChain.sol";
+import "../../PlasmaCore/PlasmaTurnGame.sol";
+
+import "../Libraries/BattleDamageCalculator.sol";
+import "../Libraries/Pokedex.sol";
 import "./CryptoMons.sol";
-
-import "../../Libraries/Battles/BattleDamageCalculator.sol";
-import "../../Libraries/Transaction/RLPReader.sol";
-import "../../Libraries/Transaction/Transaction.sol";
-
 
 contract CryptoMonBattles is PlasmaTurnGame, Ownable {
 
@@ -58,7 +57,6 @@ contract CryptoMonBattles is PlasmaTurnGame, Ownable {
     }
 
     enum RLPExitData {
-        PlayerIndex,
         Slot,
         PrevBlockNumber,
         BlockNumber,
@@ -109,7 +107,7 @@ contract CryptoMonBattles is PlasmaTurnGame, Ownable {
 
         address supposedOwner;
         uint64 token;
-        if(rlpExit[0].toUint() == 0) {
+        if(exitDataIndex == 0) {
             supposedOwner = players[0];
             token = uint64(start[uint(Battle.CryptoMonPL)].toUint());
         } else {
@@ -159,7 +157,6 @@ contract CryptoMonBattles is PlasmaTurnGame, Ownable {
 
         RootChain.Exit[] memory result = new RootChain.Exit[](1);
         result[0] = exit;
-        require(exit.owner == players[exitDataIndex], "Exit Data must be corresponding to the player or the opponent in each case");
         return result;
     }
 

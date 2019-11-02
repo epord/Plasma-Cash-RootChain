@@ -10,13 +10,13 @@ import "openzeppelin-solidity/contracts/token/ERC721/IERC721Receiver.sol";
 
 // Lib deps
 import "openzeppelin-solidity/contracts/math/SafeMath.sol";
-import "../../Libraries/Transaction/Transaction.sol";
-import "../../Libraries/ECVerify.sol";
-import "../../Libraries/ChallengeLib.sol";
+import "./Libraries/Transaction/Transaction.sol";
+import "./Libraries/ECVerify.sol";
+import "./Libraries/ChallengeLib.sol";
 
 // SMT and VMC
-import "../Supporting/SparseMerkleTree.sol";
-import "../Supporting/ValidatorManagerContract.sol";
+import "./Supporting/ValidatorManagerContract.sol";
+import "./Supporting/SparseMerkleTree.sol";
 
 
 contract RootChain is IERC721Receiver {

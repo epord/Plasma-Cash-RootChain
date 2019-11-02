@@ -6,7 +6,6 @@ pragma solidity ^0.5.2;
 
 import "./RLPReader.sol";
 
-
 library Transaction {
 
     using RLPReader for bytes;

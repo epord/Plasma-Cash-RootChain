@@ -2,9 +2,7 @@ pragma solidity ^0.5.2;
 pragma experimental ABIEncoderV2;
 
 import "./State.sol";
-import "./Rules.sol";
-
-import "../../Core/Plasma/PlasmaChannelManager.sol";
+import "../../PlasmaChannelManager.sol";
 
 /**
  * Library Adjudicators for coin deposit logging.

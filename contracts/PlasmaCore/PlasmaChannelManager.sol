@@ -3,12 +3,12 @@ pragma experimental ABIEncoderV2;
 
 import "openzeppelin-solidity/contracts/drafts/Counters.sol";
 
-import "./PlasmaTurnGame.sol";
+import "./Libraries/Battles/Adjudicator.sol";
+import "./Libraries/Transaction/Transaction.sol";
+import "./Libraries/ChallengeLib.sol";
+import "./RootChain.sol";
+import "./Libraries/Battles/Rules.sol";
 
-import "../../Libraries/Battles/Adjudicator.sol";
-import "../../Libraries/Transaction/Transaction.sol";
-import "../../Libraries/ChallengeLib.sol";
-import "../../Libraries/Battles/Rules.sol";
 
 //Plasma Channel Manager
 contract PlasmaCM {
@@ -167,6 +167,7 @@ contract PlasmaCM {
       * @dev Allows a player to create a Force Move Channel against an opponent, staking an amount of ether declaring
       *      the winner of it to be able to reclaim it, using within it any plasma tokens deposited on rootChain.
       * @notice Appends a FMChannel to channels, ExitData to exits.
+      * @notice Emits ChannelInitiated event
       * @param channelType  The address of the contract implementing PlasmaTurnGame interface to determine the type of game
       * @param opponent     The address of the user who will be facing the creator
       * @param stake        The amount of money to be staking. Same amount of ether must accompany the function call.
@@ -222,6 +223,8 @@ contract PlasmaCM {
       * @dev Allows a player respond to a channel creation, funding it.
       *      the winner of it to be able to reclaim it, using within it any plasma tokens deposited on rootChain.
       * @notice Appends ExitData to exits, sets the fundedTimestamp for the channel
+      * @notice Sets channel's state to FUNDED
+      * @notice Emits ChannelFunded event
       * @param channelId   Unique identifier of the channel
       * @param initialGameAttributes The encoded initial state to be decoded by the channelType
       * @param exitData     The encoded exitData to be decoded by the channelType of the plasma tokens being used by
@@ -252,7 +255,8 @@ contract PlasmaCM {
 
     /**
       * @dev Allows a creator of a channel to close if it is unfunded and retrieve the stakes.
-      * @notice Sets channel' state to closed
+      * @notice Sets channel's state to CLOSED
+      * @notice Emits ChannelConcluded event
       * @param channelId   Unique identifier of the channel
       */
     function closeUnfundedChannel(uint channelId) external channelExists(channelId) {
@@ -267,6 +271,17 @@ contract PlasmaCM {
         emit ChannelConcluded(channelId, channel.players[0], channel.players[1], channel.channelType);
     }
 
+    /**
+     * @dev Allows conclusion of a channel whether if there is an expired challenge or by providing the last states
+     * @notice Sets channel's state to CLOSED. Stakes are added to the winner.
+     * @notice Emits ChannelConcluded event
+     * @param channelId  Unique identifier of the channel
+     * @param prevState  State previous to last state. Ignored if an expired challenge is present.
+     * @param lastState  Last State, which must be a valid transition from prevState and also validate as a final state.
+     *                   Ignored if an expired challenge is present
+     * @param signatures The signatures (array of size 2) corresponding to prevState and lastState in that order.
+     *                   Ignored if an expired challenge is present
+     */
     function conclude(
         uint channelId,
         State.StateStruct memory prevState,
@@ -287,6 +302,9 @@ contract PlasmaCM {
         emit ChannelConcluded(channelId, channel.players[0], channel.players[1], channel.channelType);
     }
 
+    /**
+    * @dev Allows an address to extract the funds locked in this contract
+    */
     function withdraw() public {
         require(funds[msg.sender] > 0, "Sender has no funds");
         uint value = funds[msg.sender];
@@ -297,24 +315,52 @@ contract PlasmaCM {
     ///////////////////////////////////////////////////////////////////////////////////
     ////            Force Moves
     //////////////////////////////////////////////////////////////////////////////////
+
+    /**
+     * @dev Allows the creation of a forceMove Challenge for the first move in a channel.
+     * @notice Modifies the channel's forceMoveChallenge if there isn't any
+     * @param channelId  Unique identifier of the channel
+     * @param initialState The initial state of the channel. Must comply with the initialArgumentsHash of the channel.
+                           Will be the starting point to validate the forceMove response
+     */
     function forceFirstMove(
         uint channelId,
-        State.StateStruct memory initialState) public channelExists(channelId) isAllowed(channelId) {
+        State.StateStruct memory initialState
+    ) public channelExists(channelId) isAllowed(channelId) {
 
         channels[channelId].forceFirstMove(initialState, msg.sender);
     }
 
+    /**
+     * @dev Allows the creation of a forceMove Challenge for the any move in a channel.
+     * @notice Modifies the channel's forceMoveChallenge if there isn't any.
+     * @notice Emits ForceMoveRequested event
+     * @notice Either the fromState or toState must be signed one by each of the channel's participants to be a valid
+               transition, so it is ok to assume both parties agreed on these states.
+     * @param channelId  Unique identifier of the channel
+     * @param fromState   The previous to current state of the channel
+     * @param toState     The current state of the channel. Must be a valid transition from fromState
+     * @param signatures  The signatures (array of size 2) corresponding to fromState and toState in that order
+     */
     function forceMove(
         uint channelId,
         State.StateStruct memory fromState,
-        State.StateStruct memory nextState,
+        State.StateStruct memory toState,
         bytes[] memory signatures
     ) public channelExists(channelId) isAllowed(channelId) {
 
-        channels[channelId].forceMove(fromState, nextState, msg.sender, signatures);
-        emit ForceMoveRequested(channelId, nextState);
+        channels[channelId].forceMove(fromState, toState, msg.sender, signatures);
+        emit ForceMoveRequested(channelId, toState);
     }
 
+    /**
+     * @dev Allows the response of an active forceMove Challenge.
+     * @notice Removes the channel's forceMoveChallenge if there is any.
+     * @notice Emits ForceMoveResponded event
+     * @param channelId  Unique identifier of the channel
+     * @param nextState   The next state of the channel. Must be a valid transition from the challenge's state.
+     * @param signature   The signature corresponding to nextState
+     */
     function respondWithMove(
         uint channelId,
         State.StateStruct memory nextState,
@@ -325,6 +371,18 @@ contract PlasmaCM {
         emit ForceMoveResponded(channelId, nextState, signature);
     }
 
+    /**
+     * @dev Allows the response of an active forceMove Challenge by canceling with a different state signed by the
+            challenge's issuer. Then proceeds to create a challenge for the alternativeState.
+     * @notice Changes the channel's forceMoveChallenge if there is any.
+     * @notice Emits ForceMoveResponded event
+     * @notice Emits ForceMoveRequested event
+     * @param channelId  Unique identifier of the channel
+     * @param alternativeState  The state replacing the challenge's state. Must have the same turnNum as it,
+                                and thus, be signed by the same person.
+     * @param nextState         The next state of the channel. Must be a valid transition from the alternativeState.
+     * @param signatures        The signatures (array of size 2) corresponding to alternativeState and nextState in that order
+     */
     function alternativeRespondWithMove(
         uint channelId,
         State.StateStruct memory alternativeState,
@@ -338,60 +396,30 @@ contract PlasmaCM {
     }
 
     ///////////////////////////////////////////////////////////////////////////////////
-    ////
     ////            Plasma Challenges
-    ////
     //////////////////////////////////////////////////////////////////////////////////
-    function challengeBefore(
-        uint channelId,
-        uint index,
-        bytes calldata txBytes,
-        bytes calldata txInclusionProof,
-        uint256 blockNumber
-    ) external payable channelExists(channelId) isChallengeable(channelId) Bonded {
 
-        require(block.timestamp <= channels[channelId].fundedTimestamp + CHALLENGE_PERIOD, "Challenge window is over");
-        checkBefore(exits[channelId][index], txBytes, txInclusionProof, blockNumber);
-        bytes32 txHash = txBytes.getHash();
-        require(!challenges[channelId].contains(txHash), "Transaction used for challenge already");
-
-        // Need to save the exiting transaction's owner, to verify
-        // that the response is valid
-        challenges[channelId].push(
-            ChallengeLib.Challenge({
-                owner:  txBytes.getOwner(),
-                challenger: msg.sender,
-                txHash: txHash,
-                challengingBlockNumber: blockNumber
-            })
-        );
-
-        FMChannel storage channel = channels[channelId];
-        channel.state = ChannelState.SUSPENDED;
-        emit ChallengeRequest(channelId, index, txHash, channel.players[0], channel.players[1], msg.sender);
-    }
-
-    function checkBefore(
-        RootChain.Exit memory exit,
-        bytes memory txBytes,
-        bytes memory proof,
-        uint blockNumber
-    ) private view {
-        require(blockNumber <= exit.prevBlock, "Tx should be before the exit's parent block");
-        rootChain.checkTX(txBytes, proof, blockNumber);
-        Transaction.TX memory txData = txBytes.getTransaction();
-        require(txData.slot == exit.slot, "Tx is referencing another slot");
-    }
-
+    /**
+     * @dev Allows a user to challenge a funded channel's exit, by providing a direct spend, in order to prevent the
+            use of unauthorized tokens.
+     * @notice Emits ChannelChallenged event
+     * @notice Sets channel's state to CHALLENGED
+     * @param channelId   Unique identifier of the channel
+     * @param index       Index corresponding to the exit's index to be challenged
+     * @param txBytes     RLP encoded bytes of the transaction to make a Challenge After. See CheckAfter for conditions.
+     * @param proof       Bytes needed for the proof of inclusion of txBytes in the Plasma block
+     * @param signature   Signature of the txBytes proving the validity of it.
+     * @param blockNumber BlockNumber of the transaction to be checked for the inclusion proof
+     */
     function challengeAfter(
         uint channelId,
         uint index,
-        bytes calldata challengingTransaction,
+        bytes calldata txBytes,
         bytes calldata proof,
         bytes calldata signature,
-        uint256 challengingBlockNumber)
+        uint256 blockNumber)
     external channelExists(channelId) isFunded(channelId) {
-        checkAfter(exits[channelId][index], challengingTransaction, proof, signature, challengingBlockNumber);
+        checkAfter(exits[channelId][index], txBytes, proof, signature, blockNumber);
 
         FMChannel storage channel = channels[channelId];
         channel.state = ChannelState.CHALLENGED;
@@ -399,6 +427,15 @@ contract PlasmaCM {
         emit ChannelChallenged(channelId, index, channel.players[0], channel.players[1], msg.sender);
     }
 
+    /**
+     * @dev Checks a transaction to be a direct spend from an Exit
+     * @param exit        RootChain.Exit exit to be challenged
+     * @param txBytes     RLP encoded bytes of the transaction to make a Challenge After. Should be a direct spend.
+                          Has to be the same slot, signed by the same owner and its' prevBlock equal to exit's exitBlock
+     * @param proof       Bytes needed for the proof of inclusion of txBytes in the Plasma block
+     * @param blockNumber BlockNumber of the transaction to be checked for the inclusion proof. Must be greater to
+     *                    exit.exitBlock.
+     */
     function checkAfter(
         RootChain.Exit memory exit,
         bytes memory txBytes,
@@ -415,15 +452,27 @@ contract PlasmaCM {
         require(txData.prevBlock == exit.exitBlock, "Not a direct spend");
     }
 
+    /**
+     * @dev Allows a user to challenge a funded channel's exit, by providing a previous double spend, in order to prevent the
+            use of unauthorized tokens.
+     * @notice Emits ChannelChallenged event
+     * @notice Sets channel's state to CHALLENGED
+     * @param channelId   Unique identifier of the channel
+     * @param index       Index corresponding to the exit's index to be challenged
+     * @param txBytes     RLP encoded bytes of the transaction to make a Challenge Between. See CheckBetween for conditions.
+     * @param proof       Bytes needed for the proof of inclusion of txBytes in the Plasma block
+     * @param signature   Signature of the txBytes proving the validity of it.
+     * @param blockNumber BlockNumber of the transaction to be checked for the inclusion proof
+     */
     function challengeBetween(
         uint channelId,
         uint index,
-        bytes calldata challengingTransaction,
+        bytes calldata txBytes,
         bytes calldata proof,
         bytes calldata signature,
-        uint256 challengingBlockNumber)
+        uint256 blockNumber)
     external channelExists(channelId) isFunded(channelId) {
-        checkBetween(exits[channelId][index], challengingTransaction, proof, signature, challengingBlockNumber);
+        checkBetween(exits[channelId][index], txBytes, proof, signature, blockNumber);
 
         FMChannel storage channel = channels[channelId];
         channel.state = ChannelState.CHALLENGED;
@@ -431,6 +480,16 @@ contract PlasmaCM {
         emit ChannelChallenged(channelId, index, channel.players[0], channel.players[1], msg.sender);
     }
 
+    /**
+     * @dev Checks a transaction to be a previous double spend from an Exit
+     * @param exit        RootChain.Exit exit to be challenged
+     * @param txBytes     RLP encoded bytes of the transaction to make a Challenge Between. Should be a direct spend of
+                          the exit.prevBlock. Has to be the same slot, signed by the same owner and the blockNumber
+                          Should be before exit.exitBlock.
+     * @param proof       Bytes needed for the proof of inclusion of txBytes in the Plasma block
+     * @param blockNumber BlockNumber of the transaction to be checked for the inclusion proof. Must be between exit.prevBlock
+     *                    and exit.exitBlock.
+     */
     function checkBetween(
         RootChain.Exit memory exit,
         bytes memory txBytes,
@@ -446,6 +505,68 @@ contract PlasmaCM {
         rootChain.checkTX(txBytes, proof, blockNumber);
         Transaction.TX memory txData = txBytes.getTransaction();
         require(txData.hash.ecverify(signature, exit.prevOwner), "Invalid signature");
+        require(txData.slot == exit.slot, "Tx is referencing another slot");
+    }
+
+    /**
+     * @dev Allows a user to create a Plasma Challenge targeting a funded channel's exit in order to prevent the use of
+            unauthorized tokens.
+     * @notice Pushes a ChallengeLib.Challenge to challenges
+     * @notice Emits ChallengeRequest event
+     * @notice Sets channel's state to SUSPENDED
+     * @notice A bond must be locked to prevent unlawful challenges. If the challenge is not answered, the bond is returned.
+     * @param channelId   Unique identifier of the channel
+     * @param index       Index corresponding to the exit's index to be challenged
+     * @param txBytes     RLP encoded bytes of the transaction to make a Challenge Before. See CheckBefore for conditions.
+     * @param proof       Bytes needed for the proof of inclusion of txBytes in the Plasma block
+     * @param blockNumber BlockNumber of the transaction to be checked for the inclusion proof
+     */
+    function challengeBefore(
+        uint channelId,
+        uint index,
+        bytes calldata txBytes,
+        bytes calldata proof,
+        uint256 blockNumber
+    ) external payable channelExists(channelId) isChallengeable(channelId) Bonded {
+
+        require(block.timestamp <= channels[channelId].fundedTimestamp + CHALLENGE_PERIOD, "Challenge window is over");
+        checkBefore(exits[channelId][index], txBytes, proof, blockNumber);
+        bytes32 txHash = txBytes.getHash();
+        require(!challenges[channelId].contains(txHash), "Transaction used for challenge already");
+
+        // Need to save the exiting transaction's owner, to verify
+        // that the response is valid
+        challenges[channelId].push(
+            ChallengeLib.Challenge({
+            owner:  txBytes.getOwner(),
+            challenger: msg.sender,
+            txHash: txHash,
+            challengingBlockNumber: blockNumber
+            })
+        );
+
+        FMChannel storage channel = channels[channelId];
+        channel.state = ChannelState.SUSPENDED;
+        emit ChallengeRequest(channelId, index, txHash, channel.players[0], channel.players[1], msg.sender);
+    }
+
+    /**
+     * @dev Checks a transaction against an exit for a Challenge Before
+     * @param exit        RootChain.Exit exit to be challenged
+     * @param txBytes     RLP encoded bytes of the transaction to make a Challenge Before.
+     * @param proof       Bytes needed for the proof of inclusion of txBytes in the Plasma block
+     * @param blockNumber BlockNumber of the transaction to be checked for the inclusion proof. Must be previous to
+     *                    exit.prevBlock.
+     */
+    function checkBefore(
+        RootChain.Exit memory exit,
+        bytes memory txBytes,
+        bytes memory proof,
+        uint blockNumber
+    ) private view {
+        require(blockNumber <= exit.prevBlock, "Tx should be before the exit's parent block");
+        rootChain.checkTX(txBytes, proof, blockNumber);
+        Transaction.TX memory txData = txBytes.getTransaction();
         require(txData.slot == exit.slot, "Tx is referencing another slot");
     }
 
@@ -528,10 +649,9 @@ contract PlasmaCM {
     }
 
     ///////////////////////////////////////////////////////////////////////////////////
-    ////
     ////            Getters
-    ////
     //////////////////////////////////////////////////////////////////////////////////
+
     function getFunds(address user) external view returns (uint) {
         return funds[user];
     }
@@ -549,11 +669,11 @@ contract PlasmaCM {
         uint256 index = uint256(challenges[channelId].indexOf(txHash));
         return challenges[channelId][index];
     }
+
     ///////////////////////////////////////////////////////////////////////////////////
-    ////
     ////            Modifiers
-    ////
     //////////////////////////////////////////////////////////////////////////////////
+
     modifier Payment(uint stake) {
         require(stake >= MINIMAL_BET,"Stake must be greater than minimal bet");
         require(stake == msg.value, "Invalid Payment amount");

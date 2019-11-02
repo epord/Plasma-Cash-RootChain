@@ -2,8 +2,8 @@ pragma solidity ^0.5.2;
 pragma experimental ABIEncoderV2;
 
 import "../ECVerify.sol";
+import "../../PlasmaTurnGame.sol";
 
-import "../../Core/Plasma/PlasmaTurnGame.sol";
 
 library State {
 

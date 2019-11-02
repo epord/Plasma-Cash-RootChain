@@ -5,7 +5,7 @@ import 'openzeppelin-solidity/contracts/token/ERC721/ERC721.sol';
 import 'openzeppelin-solidity/contracts/ownership/Ownable.sol';
 import "openzeppelin-solidity/contracts/drafts/Counters.sol";
 
-import "../../Libraries/Pokedex.sol";
+import "../Libraries/Pokedex.sol";
 
 contract CryptoMons is ERC721, Ownable, Pokedex {
 
