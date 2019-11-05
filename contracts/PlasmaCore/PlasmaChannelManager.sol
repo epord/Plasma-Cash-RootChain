@@ -522,7 +522,8 @@ contract PlasmaCM {
 
     /**
      * @dev Allows a user to create a Plasma Challenge targeting a funded channel's exit in order to prevent the use of
-     *       unauthorized tokens.
+     *       unauthorized tokens. A plasma challenge is any previous transaction of the token that must be proved invalid
+     *       by a direct spend of it.
      * @notice Pushes a ChallengeLib.Challenge to challenges
      * @notice Emits ChallengeRequest event
      * @notice Sets channel's state to SUSPENDED
@@ -639,17 +640,17 @@ contract PlasmaCM {
         emit ChallengeResponded(_channelId, _index, challenge.txHash, channel.players[0], channel.players[1], challenge.challenger);
     }
 
-    /**
-     * @dev Checks a Plasma Challenge's response against an exit.
-     * @param exit        RootChain.Exit exit to be challenged
-     * @param challenge   ChallengeLib.Challenge challenge to respond to
-     * @param blockNumber BlockNumber of the transaction to be checked for the inclusion proof. Should be a future spend of
-     *                    the challenge.challengingBlockNumber but before the exit.exitBlock. Has to be the same slot,
-     *                    signed by the same owner.
-     * @param txBytes     RLP encoded bytes of the transaction to proof the spending of the challenge. Must
-     * @param proof       Bytes needed for the proof of inclusion of txBytes in the Plasma block
-     * @param signature   Signature of the txBytes to prove its validity. Must be signed by the challenged owner
-     */
+   /**
+    * @dev Checks a Plasma Challenge's response against an exit.
+    * @param exit        RootChain.Exit exit to be challenged
+    * @param challenge   ChallengeLib.Challenge challenge to respond to
+    * @param blockNumber BlockNumber of the transaction to be checked for the inclusion proof. Should be a future spend of
+    *                    the challenge.challengingBlockNumber but before the exit.exitBlock. Has to be the same slot,
+    *                    signed by the same owner.
+    * @param txBytes     RLP encoded bytes of the transaction to proof the spending of the challenge. Must
+    * @param proof       Bytes needed for the proof of inclusion of txBytes in the Plasma block
+    * @param signature   Signature of the txBytes to prove its validity. Must be signed by the challenged owner
+    */
     function checkResponse(
         RootChain.Exit memory exit,
         ChallengeLib.Challenge memory challenge,

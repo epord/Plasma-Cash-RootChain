@@ -216,10 +216,23 @@ contract RootChain is IERC721Receiver {
         smt = new SparseMerkleTree();
     }
 
+    function pause() external isValidator {
+        paused = true;
+        emit Paused(true);
+    }
+
+    function unpause() external isValidator {
+        paused = false;
+        emit Paused(false);
+    }
+
+    function() external payable {
+        revert("This contract does not receive money");
+    }
+
     ///////////////////////////////////////////////////////////////////////////////////
     ////   Block submissions
     //////////////////////////////////////////////////////////////////////////////////
-
 
     /**
      * @dev called by a Validator to append a Plasma block to the Plasma chain
@@ -260,6 +273,22 @@ contract RootChain is IERC721Receiver {
         });
 
         emit SubmittedSecretBlock(blockNumber, root, block.timestamp);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////
+    ////   Deposit
+    //////////////////////////////////////////////////////////////////////////////////
+
+    function onERC721Received(
+        address /*operator*/,
+        address from,
+        uint256 tokenId,
+        bytes memory /*data*/
+    )public isTokenApproved(msg.sender) returns (bytes4) {
+
+        require(ERC721(msg.sender).ownerOf(tokenId) == address(this), "Token was not transfered correctly");
+        deposit(from, msg.sender, tokenId);
+        return this.onERC721Received.selector;
     }
 
     /** @dev Allows anyone to deposit funds into the Plasma chain, called when contract receives ERC721
@@ -386,6 +415,7 @@ contract RootChain is IERC721Receiver {
       *      resets the coin and awards the challenger with the bond.
       * @notice Changes coin's state to EXITED
       * @notice Emits FinalizedExit event if no challenges are present
+      * @notice Emits Withdrew event if no challenges are present
       * @notice Emits CoinReset event if there are challenges present
       * @param slot          The slot of the coin being exited
       */
@@ -439,9 +469,12 @@ contract RootChain is IERC721Receiver {
         }
     }
 
-    /// @dev Withdraw a UTXO that has been exited
-    /// @param slot The slot of the coin being withdrawn
-    function withdraw(uint64 slot) public isState(slot, State.EXITED) {
+    /**
+      * @dev Withdraws a token that has been exited.
+      * @notice Emits Withdrew event
+      * @param slot          The slot of the coin being withdrawn
+      */
+    function withdraw(uint64 slot) private isState(slot, State.EXITED) {
         require(coins[slot].owner == msg.sender, "You do not own that slot");
         uint256 uid = coins[slot].uid;
 
@@ -453,49 +486,232 @@ contract RootChain is IERC721Receiver {
         emit Withdrew(msg.sender, slot, c.contractAddress, uid);
     }
 
+    /**
+      * @dev Cancels an ongoing exit, resetting the coin to not-exited.
+      * @notice Emits CoinReset event
+      * @param slot          The slot of the coin being reset
+      */
     function cancelExit(uint64 slot) public {
 
         require(coins[slot].exit.owner == msg.sender, "Only coin's owner is allowed to cancel the exit");
+        require(challenges[slot][0].txHash != 0x0, "Can't cancel an exit with a current challenge");
         delete coins[slot].exit;
         coins[slot].state = State.NOT_EXITING;
         freeBond(msg.sender);
         emit CoinReset(slot, coins[slot].owner);
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////
+    ////   Challenges
+    //////////////////////////////////////////////////////////////////////////////////
 
-    /******************** CHALLENGES ********************/
+   /**
+    * @dev Allows a user to challenge an exit, by providing a direct spend, in order to prevent the exit of an unauthorized token.
+    * @notice Emits CoinReset event
+    * @notice Sets coin's state to NOT_EXITING
+    * @param slot        The slot to be challenged
+    * @param txBytes     RLP encoded bytes of the transaction to make a Challenge After. See CheckAfter for conditions.
+    * @param proof       Bytes needed for the proof of inclusion of txBytes in the Plasma block
+    * @param signature   Signature of the txBytes proving the validity of it.
+    * @param blockNumber BlockNumber of the transaction to be checked for the inclusion proof
+    */
+    function challengeAfter(
+        uint64 slot,
+        bytes calldata txBytes,
+        bytes calldata proof,
+        bytes calldata signature,
+        uint256 blockNumber
+    ) external isState(slot, State.EXITING) {
 
-    /// @dev Submits proof of a transaction before prevTx as an exit challenge
-    /// @notice Exitor has to call respondChallengeBefore and submit a
-    ///         transaction before prevTx or prevTx itself.
-    /// @param slot The slot corresponding to the coin whose exit is being challenged
-    /// @param txBytes The RLP-encoded transaction involving a particular
-    ///        coin which an exiting owner of the coin claims to be the latest
-    /// @param txInclusionProof An inclusion proof of exitingTx
-    ///        owner indicated in prevTx
-    /// @param blockNumber The block containing the exitingTx
+        checkAfter(slot, txBytes, proof, signature, blockNumber);
+        applyPenalties(slot);
+    }
+
+   /**
+    * @dev Checks a transaction to be a direct spend from an Exit
+    * @param slot        The slot to be challenged
+    * @param txBytes     RLP encoded bytes of the transaction to make a Challenge After. Should be a direct spend.
+    *                     Has to be the same slot, signed by the same owner and its' prevBlock equal to exit's exitBlock
+    * @param proof       Bytes needed for the proof of inclusion of txBytes in the Plasma block
+    * @param blockNumber BlockNumber of the transaction to be checked for the inclusion proof. Must be greater than exit.exitBlock.
+    */
+    function checkAfter(
+        uint64 slot,
+        bytes memory txBytes,
+        bytes memory proof,
+        bytes memory signature,
+        uint blockNumber
+    ) private view {
+
+        require(
+            coins[slot].exit.exitBlock < blockNumber,
+            "Tx should be after the exitBlock"
+        );
+
+        Transaction.TX memory txData = checkTxValid(txBytes, proof, blockNumber);
+        require(txData.hash.ecverify(signature, coins[slot].exit.owner), "Invalid signature");
+        require(txData.slot == slot, "Tx is referencing another slot");
+        require(txData.prevBlock == coins[slot].exit.exitBlock, "Not a direct spend");
+    }
+
+    /**
+    * @dev Allows a user to challenge an exit, by providing a previous double spend, in order to prevent the exit of an unauthorized token.
+    * @notice Emits CoinReset event
+    * @notice Sets coin's state to NOT_EXITING
+    * @param slot        The slot to be challenged
+    * @param txBytes     RLP encoded bytes of the transaction to make a Challenge Between. See CheckBetween for conditions.
+    * @param proof       Bytes needed for the proof of inclusion of txBytes in the Plasma block
+    * @param signature   Signature of the txBytes proving the validity of it.
+    * @param blockNumber BlockNumber of the transaction to be checked for the inclusion proof
+    */
+    function challengeBetween(
+        uint64 slot,
+        bytes calldata txBytes,
+        bytes calldata proof,
+        bytes calldata signature,
+        uint256 blockNumber
+    ) external isState(slot, State.EXITING) {
+
+        checkBetween(slot, txBytes, proof, signature, blockNumber);
+        applyPenalties(slot);
+    }
+
+   /**
+    * @dev Checks a transaction to be a previous double spend from an Exit
+    * @param slot        The slot to be challenged
+    * @param txBytes     RLP encoded bytes of the transaction to make a Challenge Between. Should be a direct spend of
+    *                    the exit.prevBlock. Has to be the same slot, signed by the same owner and the blockNumber
+    *                    Should be before exit.exitBlock.
+    * @param proof       Bytes needed for the proof of inclusion of txBytes in the Plasma block
+    * @param blockNumber BlockNumber of the transaction to be checked for the inclusion proof. Must be between exit.prevBlock
+    *                    and exit.exitBlock.
+    */
+    function checkBetween(
+        uint64 slot,
+        bytes memory txBytes,
+        bytes memory proof,
+        bytes memory signature,
+        uint blockNumber
+    ) private view {
+
+        require(
+            coins[slot].exit.exitBlock > blockNumber &&
+            coins[slot].exit.prevBlock < blockNumber,
+            "Tx should be between the exit's blocks"
+        );
+
+        Transaction.TX memory txData = checkTxValid(txBytes, proof, blockNumber);
+        require(txData.hash.ecverify(signature, coins[slot].exit.prevOwner), "Invalid signature");
+        require(txData.slot == slot, "Tx is referencing another slot");
+    }
+
+    /**
+     * @dev Apply penalties for un unlawful exit attempt
+     * @notice Set the coin's state to NOT_EXITING
+     * @notice Emits CoinReset event
+     * @notice The bond is given to the responder.
+     * @param slot                  The slot challenged
+     */
+    function applyPenalties(uint64 slot) private {
+
+        // Apply penalties and change state
+        slashBond(coins[slot].exit.owner, msg.sender);
+        coins[slot].state = State.NOT_EXITING;
+        delete coins[slot].exit;
+        emit CoinReset(slot, coins[slot].owner);
+    }
+
+  /**
+   * @dev Allows a user to create a Plasma Challenge targeting an exit in order to prevent the use of unauthorized tokens.
+   *      A plasma challenge is any previous transaction of the token that must be proved invalid by a direct spend of it.
+   * @notice Pushes a ChallengeLib.Challenge to challenges
+   * @notice Emits ChallengedExit event
+   * @notice A bond must be locked to prevent unlawful challenges. If the challenge is not answered, the bond is returned.
+   * @param slot        The slot to be challenged
+   * @param txBytes     RLP encoded bytes of the transaction to make a Challenge Before. See CheckBefore for conditions.
+   * @param proof       Bytes needed for the proof of inclusion of txBytes in the Plasma block
+   * @param blockNumber BlockNumber of the transaction to be checked for the inclusion proof
+   */
     function challengeBefore(
         uint64 slot,
         bytes calldata txBytes,
-        bytes calldata txInclusionProof,
+        bytes calldata proof,
         uint256 blockNumber
     ) external payable isBonded isState(slot, State.EXITING) {
 
-        checkBefore(slot, txBytes, txInclusionProof, blockNumber);
+        checkBefore(slot, txBytes, proof, blockNumber);
         setChallenged(slot, txBytes.getOwner(), blockNumber, txBytes.getHash());
     }
 
-    /// @dev Submits proof of a later transaction that corresponds to a challenge
-    /// @notice Can only be called in the second window of the exit period.
-    /// @param slot The slot corresponding to the coin whose exit is being challenged
-    /// @param challengingTxHash The hash of the transaction
-    ///        corresponding to the challenge we're responding to
-    /// @param respondingBlockNumber The block number which included the transaction
-    ///        we are responding with
-    /// @param respondingTransaction The RLP-encoded transaction involving a particular
-    ///        coin which took place directly after challengingTransaction
-    /// @param proof An inclusion proof of respondingTransaction
-    /// @param signature The signature which proves a direct spend from the challenger
+   /**
+    * @dev Checks a transaction against an exit for a Challenge Before
+    * @param slot        The slot to be challenged
+    * @param txBytes     RLP encoded bytes of the transaction to make a Challenge Before.
+    * @param proof       Bytes needed for the proof of inclusion of txBytes in the Plasma block
+    * @param blockNumber BlockNumber of the transaction to be checked for the inclusion proof. Must be previous to
+    *                    exit.prevBlock.
+    */
+    function checkBefore(
+        uint64 slot,
+        bytes memory txBytes,
+        bytes memory proof,
+        uint blockNumber
+    ) private view {
+
+        require(
+            blockNumber <= coins[slot].exit.prevBlock,
+            "Tx should be before the exit's parent block"
+        );
+
+        Transaction.TX memory txData = checkTxValid(txBytes, proof, blockNumber);
+        require(txData.slot == slot, "Tx is referencing another slot");
+    }
+
+   /**
+    * @dev Pushes a challenge for a given slot
+    * @notice Pushes a ChallengeLib.Challenge to challenges
+    * @notice Emits ChallengedExit event
+    * @notice The bond is given to the responder.
+    * @param slot                   The slot to be challenged
+    * @param owner                  The claimed owner of the challenge
+    * @param owner                  The claimed owner of the challenge
+    * @param challengingBlockNumber BlockNumber of the challenging transaction
+    * @param txHash                 The hash of the challenging transaction
+    */
+    function setChallenged(uint64 slot, address owner, uint256 challengingBlockNumber, bytes32 txHash) private {
+
+        // Require that the challenge is in the first half of the challenge window
+        require(block.timestamp <= coins[slot].exit.createdAt + CHALLENGE_WINDOW, "Challenge windows is over");
+
+        require(!challenges[slot].contains(txHash),
+            "Transaction used for challenge already");
+
+        // Need to save the exiting transaction's owner, to verify
+        // that the response is valid
+        challenges[slot].push(
+            ChallengeLib.Challenge({
+            owner: owner,
+            challenger: msg.sender,
+            txHash: txHash,
+            challengingBlockNumber: challengingBlockNumber
+            })
+        );
+
+        emit ChallengedExit(slot, owner, txHash, challengingBlockNumber);
+    }
+
+    /**
+     * @dev Allows a user to respond to a Plasma Challenge targeting a funded channel's exit. For validity go to CheckResponse
+     * @notice Removes a ChallengeLib.Challenge to challenges
+     * @notice Emits RespondedExitChallenge event
+     * @notice The bond is given to the responder.
+     * @param slot                   The slot to be challenged
+     * @param challengingTxHash     Hash of the transaction being challenged with.
+     * @param respondingBlockNumber BlockNumber of the respondingTransaction to be checked for the inclusion proof.
+     * @param respondingTransaction Transaction signed by the challengingTxHash owner showing a spent
+     * @param proof                 Bytes needed for the proof of inclusion of respondingTransaction in the Plasma block
+     * @param signature             Signature of the respondingTransaction to prove its validity
+     */
     function respondChallengeBefore(
         uint64 slot,
         bytes32 challengingTxHash,
@@ -519,6 +735,17 @@ contract RootChain is IERC721Receiver {
         emit RespondedExitChallenge(slot);
     }
 
+    /**
+     * @dev Checks a Plasma Challenge's response against an exit.
+     * @param slot        The slot to be challenged
+     * @param index       index of the ChallengeLib.Challenge challenge to respond to
+     * @param blockNumber BlockNumber of the transaction to be checked for the inclusion proof. Should be a future spend of
+     *                    the challenge.challengingBlockNumber but before the exit.exitBlock. Has to be the same slot,
+     *                    signed by the same owner.
+     * @param txBytes     RLP encoded bytes of the transaction to proof the spending of the challenge. Must
+     * @param proof       Bytes needed for the proof of inclusion of txBytes in the Plasma block
+     * @param signature   Signature of the txBytes to prove its validity. Must be signed by the challenged owner
+     */
     function checkResponse(
         uint64 slot,
         uint256 index,
@@ -534,124 +761,9 @@ contract RootChain is IERC721Receiver {
         require(blockNumber <= coins[slot].exit.exitBlock, "Cannot respond with a tx after the exit");
     }
 
-    function challengeBetween(
-        uint64 slot,
-        bytes calldata challengingTransaction,
-        bytes calldata proof,
-        bytes calldata signature,
-        uint256 challengingBlockNumber
-    ) external isState(slot, State.EXITING) {
-
-        checkBetween(slot, challengingTransaction, proof, signature, challengingBlockNumber);
-        applyPenalties(slot);
-    }
-
-    function challengeAfter(
-        uint64 slot,
-        bytes calldata challengingTransaction,
-        bytes calldata proof,
-        bytes calldata signature,
-        uint256 challengingBlockNumber
-    ) external isState(slot, State.EXITING) {
-
-        checkAfter(slot, challengingTransaction, proof, signature, challengingBlockNumber);
-        applyPenalties(slot);
-    }
-
-
-    // Must challenge with a tx in between
-
-    function checkBefore(
-        uint64 slot,
-        bytes memory txBytes,
-        bytes memory proof,
-        uint blockNumber
-    ) private view {
-
-        require(
-            blockNumber <= coins[slot].exit.prevBlock,
-            "Tx should be before the exit's parent block"
-        );
-
-        Transaction.TX memory txData = checkTxValid(txBytes, proof, blockNumber);
-        require(txData.slot == slot, "Tx is referencing another slot");
-    }
-
-
-    // Check that the challenging transaction has been signed
-    // by the attested previous owner of the coin in the exit
-    function checkBetween(
-        uint64 slot,
-        bytes memory txBytes,
-        bytes memory proof,
-        bytes memory signature,
-        uint blockNumber
-    ) private view {
-
-        require(
-            coins[slot].exit.exitBlock > blockNumber &&
-            coins[slot].exit.prevBlock < blockNumber,
-            "Tx should be between the exit's blocks"
-        );
-
-        Transaction.TX memory txData = checkTxValid(txBytes, proof, blockNumber);
-        require(txData.hash.ecverify(signature, coins[slot].exit.prevOwner), "Invalid signature");
-        require(txData.slot == slot, "Tx is referencing another slot");
-    }
-
-    function checkAfter(
-        uint64 slot,
-        bytes memory txBytes,
-        bytes memory proof,
-        bytes memory signature,
-        uint blockNumber
-    ) private view {
-
-        require(
-            coins[slot].exit.exitBlock < blockNumber,
-            "Tx should be after the exitBlock"
-        );
-
-        Transaction.TX memory txData = checkTxValid(txBytes, proof, blockNumber);
-        require(txData.hash.ecverify(signature, coins[slot].exit.owner), "Invalid signature");
-        require(txData.slot == slot, "Tx is referencing another slot");
-        require(txData.prevBlock == coins[slot].exit.exitBlock, "Not a direct spend");
-    }
-
-    function applyPenalties(uint64 slot) private {
-
-        // Apply penalties and change state
-        slashBond(coins[slot].exit.owner, msg.sender);
-        coins[slot].state = State.NOT_EXITING;
-        delete coins[slot].exit;
-        emit CoinReset(slot, coins[slot].owner);
-    }
-
-    /// @param slot The slot of the coin being challenged
-    /// @param owner The user claimed to be the true owner of the coin
-    function setChallenged(uint64 slot, address owner, uint256 challengingBlockNumber, bytes32 txHash) private {
-
-        // Require that the challenge is in the first half of the challenge window
-        require(block.timestamp <= coins[slot].exit.createdAt + CHALLENGE_WINDOW, "Challenge windows is over");
-
-        require(!challenges[slot].contains(txHash),
-            "Transaction used for challenge already");
-
-        // Need to save the exiting transaction's owner, to verify
-        // that the response is valid
-        challenges[slot].push(
-            ChallengeLib.Challenge({
-                owner: owner,
-                challenger: msg.sender,
-                txHash: txHash,
-                challengingBlockNumber: challengingBlockNumber
-            })
-        );
-
-        emit ChallengedExit(slot, owner, txHash, challengingBlockNumber);
-    }
-
-    /******************** BOND RELATED ********************/
+    ///////////////////////////////////////////////////////////////////////////////////
+    ////   Bonds
+    //////////////////////////////////////////////////////////////////////////////////
 
     function freeBond(address from) private {
 
@@ -677,22 +789,21 @@ contract RootChain is IERC721Receiver {
         emit SlashedBond(from, to, BOND_AMOUNT);
     }
 
-    /******************** PROOF CHECKING ********************/
+    ///////////////////////////////////////////////////////////////////////////////////
+    ////   Proofs
+    //////////////////////////////////////////////////////////////////////////////////
 
-    /// @dev Verifies that consecutive two transaction involving the same coin
-    ///      are valid
-    /// @notice If exitingTxBytes corresponds to a deposit transaction, this function fails
-    /// @param prevTxBytes The RLP-encoded transaction involving a particular
-    ///        coin which took place directly before exitingTxBytes
-    /// @param exitingTxBytes The RLP-encoded transaction involving a particular
-    ///        coin which an exiting owner of the coin claims to be the latest
-    /// @param prevTxInclusionProof An inclusion proof of prevTx
-    /// @param exitingTxInclusionProof An inclusion proof of exitingTx
-    /// @param signature The signature of the exitingTxBytes by the coin
-    ///        owner indicated in prevTx.
-    /// @param blocks An array of two block numbers, at index 0, the block
-    ///        containing the prevTx and at index 1, the block containing
-    ///        the exitingTx
+   /**
+    * @dev Verifies that consecutive two transaction involving the same coin are valid
+    * @notice If exitingTxBytes corresponds to a deposit transaction, this function fails
+    * @param prevTxBytes    The RLP-encoded transaction involving a coin which took place directly before exitingTxBytes
+    * @param exitingTxBytes The RLP-encoded transaction involving a coin which an exiting owner of the coin claims to be the latest
+    * @param prevTxInclusionProof    An inclusion proof of prevTx
+    * @param exitingTxInclusionProof An inclusion proof of exitingTx
+    * @param signature The signature of the exitingTxBytes by the coin owner indicated in prevTx.
+    * @param blocks An array of two block numbers, at index 0, the block containing the prevTx and at index 1, the block containing
+    *        the exitingTx
+    */
     function checkBothIncludedAndSigned(
         bytes memory prevTxBytes, bytes memory exitingTxBytes,
         bytes memory prevTxInclusionProof, bytes memory exitingTxInclusionProof,
@@ -712,16 +823,20 @@ contract RootChain is IERC721Receiver {
         require(exitingTxData.hash.ecverify(signature, prevTxData.receiver), "Invalid signature");
     }
 
-    function checkTX(
-        bytes memory txBytes,
-        bytes memory proof,
-        uint256 blockNumber
-    ) public view {
+    //Non-returning wrapper for checkTxValid
+    function checkTX(bytes memory txBytes, bytes memory proof, uint256 blockNumber) public view returns (bool) {
 
         checkTxValid(txBytes, proof, blockNumber);
+        return true;
     }
 
-
+    /**
+     * @dev Verifies that consecutive two transaction involving the same coin are valid
+     * @notice If exitingTxBytes corresponds to a deposit transaction, this function fails
+     * @param txBytes     The RLP-encoded transaction involving a coin
+     * @param proof       An inclusion proof of txBytes
+     * @param blockNumber The blockNumber that included txBytes
+     */
     function checkTxValid(
         bytes memory txBytes,
         bytes memory proof,
@@ -766,7 +881,13 @@ contract RootChain is IERC721Receiver {
         }
     }
 
-
+   /**
+    * @dev Checks whether a transactionHash was submitted in a block by doing a Merkle Proof
+    * @param slot        Slot where the transaction was included
+    * @param txHash      Hash to be checked was included
+    * @param blockNumber The blockNumber that included txHash
+    * @param proof       An inclusion proof of txHash
+    */
     function checkHashIncluded(
         uint64 slot,
         bytes32 txHash,
@@ -792,6 +913,13 @@ contract RootChain is IERC721Receiver {
         }
     }
 
+    /**
+     * @dev Checks whether a secret was included in a secret revealing block by doing a Merkle Proof
+     * @param slot        Slot where the transaction was included
+     * @param secret      Secret to be included
+     * @param blockNumber The blockNumber that included txBytes
+     * @param proof       An inclusion proof of txBytes
+     */
     function checkHashIncludedSecret(
         uint64 slot,
         bytes32 secret,
@@ -813,39 +941,7 @@ contract RootChain is IERC721Receiver {
         );
     }
 
-    /******************** DEPOSIT FUNCTIONS ********************/
-
-    function pause() external isValidator {
-        paused = true;
-        emit Paused(true);
-    }
-
-    function unpause() external isValidator {
-        paused = false;
-        emit Paused(false);
-    }
-
-    function() external payable {
-        //TODO: Not quite sure about this
-        require(false, "This contract does not receive money");
-    }
-
-    function onERC721Received(address /*operator*/, address from, uint256 tokenId, bytes memory /*data*/)
-    public isTokenApproved(msg.sender) returns (bytes4) {
-
-        require(ERC721(msg.sender).ownerOf(tokenId) == address(this), "Token was not transfered correctly");
-        deposit(from, msg.sender, tokenId);
-        return this.onERC721Received.selector;
-    }
-
-    // Approve and Deposit function for 2-step deposits without having to approve the token by the validators
-    // Requires first to have called `approve` on the specified ERC721 contract
-    function depositERC721(uint256 uid, address contractAddress) external {
-        ERC721(contractAddress).safeTransferFrom(msg.sender, address(this), uid);
-    }
-
-    /******************** HELPERS ********************/
-
+    //public wrapper for SMT.checkMembership
     function checkMembership(
         bytes32 txHash,
         bytes32 root,
@@ -860,6 +956,7 @@ contract RootChain is IERC721Receiver {
             proof);
     }
 
+    //Public checkInclusion for validation
     function checkInclusion(
         bytes32 txHash,
         uint256 blockNumber,
@@ -875,15 +972,9 @@ contract RootChain is IERC721Receiver {
         }
     }
 
-    function checkValidationAndInclusion(
-        bytes calldata txBytes,
-        bytes calldata proof,
-        uint256 blockNumber
-    ) external view returns (bool) {
-
-        checkTxValid(txBytes, proof, blockNumber);
-        return true;
-    }
+    ///////////////////////////////////////////////////////////////////////////////////
+    ////   Getters
+    //////////////////////////////////////////////////////////////////////////////////
 
     function getPlasmaCoin(uint64 slot) external view returns(uint256, uint256, address, State, address) {
 
@@ -891,8 +982,7 @@ contract RootChain is IERC721Receiver {
         return (c.uid, c.depositBlock, c.owner, c.state, c.contractAddress);
     }
 
-    function getChallenge(uint64 slot, bytes32 txHash)
-    external view returns(address, address, bytes32, uint256) {
+    function getChallenge(uint64 slot, bytes32 txHash) external view returns(address, address, bytes32, uint256) {
 
         uint256 index = uint256(challenges[slot].indexOf(txHash));
         ChallengeLib.Challenge memory c = challenges[slot][index];
@@ -927,6 +1017,10 @@ contract RootChain is IERC721Receiver {
         // Can only withdraw bond if the msg.sender
         return (balances[msg.sender].bonded, balances[msg.sender].withdrawable);
     }
+
+    ///////////////////////////////////////////////////////////////////////////////////
+    ////   Modifiers
+    //////////////////////////////////////////////////////////////////////////////////
 
     modifier isValidator() {
         require(vmc.checkValidator(msg.sender), "Sender is not a Validator");
