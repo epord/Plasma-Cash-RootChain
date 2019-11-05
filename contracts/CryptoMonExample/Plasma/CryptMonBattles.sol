@@ -136,7 +136,7 @@ contract CryptoMonBattles is PlasmaTurnGame, Ownable {
             require(supposedOwner == rlpExit[uint(RLPExitData.ExitingTxBytes)].toBytes().getOwner(),
                 "Player does not match exitingTxBytes owner");
 
-            rootChain.doInclusionChecks(
+            rootChain.checkBothIncludedAndSigned(
                 rlpExit[uint(RLPExitData.PrevTxBytes)].toBytes(),
                 rlpExit[uint(RLPExitData.ExitingTxBytes)].toBytes(),
                 rlpExit[uint(RLPExitData.PrevTxInclusionProof)].toBytes(),

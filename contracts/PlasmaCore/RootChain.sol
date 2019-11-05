@@ -21,28 +21,34 @@ import "./Supporting/SparseMerkleTree.sol";
 
 contract RootChain is IERC721Receiver {
 
-    event Debug(address message);
+    using SafeMath for uint256;
+    using Transaction for bytes;
+    using Transaction for RLPReader.RLPItem[];
+    using RLPReader for RLPReader.RLPItem;
+    using Transaction for Transaction.AtomicSwapTX;
+    using ECVerify for bytes32;
+    using ChallengeLib for ChallengeLib.Challenge[];
+
+    ///////////////////////////////////////////////////////////////////////////////////
+    ////   EVENTS
+    //////////////////////////////////////////////////////////////////////////////////
 
     /**
      * Event for coin deposit logging.
-     * @notice The Deposit event indicates that a deposit block has been added
-     *         to the Plasma chain
-     * @param slot Plasma slot, a unique identifier, assigned to the deposit
-     * @param blockNumber The index of the block in which a deposit transaction
-     *                    is included
-     * @param from The address of the depositor
+     * @notice The Deposit event indicates that a deposit block has been added to the Plasma chain
+     * @param slot            Plasma slot, a unique identifier, assigned to the deposit
+     * @param blockNumber     The index of the block in which a deposit transaction is included
+     * @param from            The address of the depositor
      * @param contractAddress The address of the contract making the deposit
      */
-    event Deposit(uint64 indexed slot, uint256 blockNumber,
-        address indexed from, address indexed contractAddress);
+    event Deposit(uint64 indexed slot, uint256 blockNumber, address indexed from, address indexed contractAddress);
 
     /**
      * Event for block submission logging
      * @notice The event indicates the addition of a new Plasma block
      * @param blockNumber The block number of the submitted block
-     * @param root The root hash of the Merkle tree containing all of a block's
-     *             transactions.
-     * @param timestamp The time when a block was added to the Plasma chain
+     * @param root        The root hash of the Merkle tree containing all of a block's transactions.
+     * @param timestamp   The time when a block was added to the Plasma chain
      */
     event SubmittedBlock(uint256 blockNumber, bytes32 root, uint256 timestamp);
 
@@ -50,15 +56,14 @@ contract RootChain is IERC721Receiver {
      * Event for secret-revealing block submission logging
      * @notice The event indicates the addition of a new Secret Revealing block
      * @param blockNumber The block number of the submitted block
-     * @param root The root hash of the Merkle tree containing all of a block's
-     *             secrets.
-     * @param timestamp The time when a block was added to the Plasma chain
+     * @param root        The root hash of the Merkle tree containing all of a block's secrets.
+     * @param timestamp   The time when a block was added to the Plasma chain
      */
     event SubmittedSecretBlock(uint256 blockNumber, bytes32 root, uint256 timestamp);
 
     /**
      * Event for logging exit starts
-     * @param slot The slot of the coin being exited
+     * @param slot  The slot of the coin being exited
      * @param owner The user who claims to own the coin being exited
      */
     event StartedExit(uint64 indexed slot, address indexed owner);
@@ -66,8 +71,8 @@ contract RootChain is IERC721Receiver {
     /**
      * Event for exit challenge logging
      * @notice This event only fires if `challengeBefore` is called.
-     * @param slot The slot of the coin whose exit was challenged
-     * @param owner The current claiming owner of the exit
+     * @param slot   The slot of the coin whose exit was challenged
+     * @param owner  The current claiming owner of the exit
      * @param txHash The hash of the tx used for the challenge
      */
     event ChallengedExit(uint64 indexed slot, address indexed owner, bytes32 txHash, uint256 challengingBlockNumber);
@@ -88,40 +93,40 @@ contract RootChain is IERC721Receiver {
 
     /**
      * Event for exit finalization logging
-     * @param slot The slot of the coin whose exit has been finalized
+     * @param slot  The slot of the coin whose exit has been finalized
      * @param owner The owner of the coin whose exit has been finalized
      */
     event FinalizedExit(uint64 indexed slot, address owner);
 
     /**
      * Event to log the freeing of a bond
-     * @param from The address of the user whose bonds have been freed
+     * @param from   The address of the user whose bonds have been freed
      * @param amount The bond amount which can now be withdrawn
      */
     event FreedBond(address indexed from, uint256 amount);
 
     /**
      * Event to log the slashing of a bond
-     * @param from The address of the user whose bonds have been slashed
-     * @param to The recipient of the slashed bonds
+     * @param from   The address of the user whose bonds have been slashed
+     * @param to     The recipient of the slashed bonds
      * @param amount The bound amount which has been forfeited
      */
     event SlashedBond(address indexed from, address indexed to, uint256 amount);
 
     /**
      * Event to log the withdrawal of a bond
-     * @param from The address of the user who withdrew bonds
+     * @param from   The address of the user who withdrew bonds
      * @param amount The bond amount which has been withdrawn
      */
     event WithdrewBonds(address indexed from, uint256 amount);
 
     /**
      * Event to log the withdrawal of a coin
-     * @param owner The address of the user who withdrew bonds
-     * @param slot the slot of the coin that was exited
-     * @param contractAddress The contract address where the coin is being withdrawn from
-              is same as `from` when withdrawing a ETH coin
-     * @param uid The uid of the coin being withdrawn if ERC721, else 0
+     * @param owner           The address of the user who withdrew bonds
+     * @param slot            The slot of the coin that was exited
+     * @param contractAddress The contract address where the coin is being withdrawn from is same as
+     *                        `from` when withdrawing a ETH coin
+     * @param uid             The uid of the coin being withdrawn if ERC721, else 0
      */
     event Withdrew(address indexed owner, uint64 indexed slot, address contractAddress, uint uid);
 
@@ -132,59 +137,9 @@ contract RootChain is IERC721Receiver {
      */
     event Paused(bool status);
 
-    using SafeMath for uint256;
-    using Transaction for bytes;
-    using Transaction for RLPReader.RLPItem[];
-    using RLPReader for RLPReader.RLPItem;
-    using Transaction for Transaction.AtomicSwapTX;
-    using ECVerify for bytes32;
-    using ChallengeLib for ChallengeLib.Challenge[];
-
-    uint256 constant BOND_AMOUNT = 0.1 ether;
-
-    /* An exit can be finalized after it has matured,
-     * after T2 = T0 + MATURITY_PERIOD
-     * An exit can be challenged in the first window
-     * between T0 and T1 ( T1 = T0 + CHALLENGE_WINDOW)
-     * A challenge can be responded to in the second window
-     * between T1 and T2
-    */
-    uint256 constant MATURITY_PERIOD = 7 days;
-    uint256 constant CHALLENGE_WINDOW = 3 days + 12 hours;
-
-    /* A secret-revealing root hash can only be submitted during a period
-     * after T0 and before T0 + SECRET_REVEALING_PERIOD
-     * where T0 is the time the corresponding block was submitted
-    */
-    uint256 constant SECRET_REVEALING_PERIOD = 1 days;
-
-    bool paused;
-
-    /*
-     * Modifiers
-     */
-    modifier isValidator() {
-        require(vmc.checkValidator(msg.sender), "Sender is not a Validator");
-        _;
-    }
-
-    modifier isTokenApproved(address _address) {
-        require(vmc.allowedTokens(_address), "Contract address is not approved for deposits");
-        _;
-    }
-
-    modifier isBonded() {
-        require(msg.value == BOND_AMOUNT, "Transaction must be accompanied by the BOND AMOUNT");
-
-        // Save challenger's bond
-        balances[msg.sender].bonded = balances[msg.sender].bonded.add(msg.value);
-        _;
-    }
-
-    modifier isState(uint64 slot, State state) {
-        require(coins[slot].state == state, "Wrong coin state");
-        _;
-    }
+    ///////////////////////////////////////////////////////////////////////////////////
+    ////   Structs
+    //////////////////////////////////////////////////////////////////////////////////
 
     struct Balance {
         uint256 bonded;
@@ -216,23 +171,42 @@ contract RootChain is IERC721Receiver {
         uint256 depositBlock;
     }
 
-    uint64 public numCoins = 0;
-
-    mapping (address => Balance) public balances;
-    mapping (uint64 => ChallengeLib.Challenge[]) challenges;
-    mapping (uint64 => Coin) coins;
-
     struct ChildBlock {
         bytes32 root;
         uint256 createdAt;
     }
+
+
+    /* An exit can be finalized after it has matured,
+     * after T2 = T0 + MATURITY_PERIOD
+     * An exit can be challenged in the first window
+     * between T0 and T1 ( T1 = T0 + CHALLENGE_WINDOW)
+     * A challenge can be responded to in the second window
+     * between T1 and T2
+    */
+    uint256 constant MATURITY_PERIOD = 7 days;
+    uint256 constant CHALLENGE_WINDOW = 3 days + 12 hours;
+
+    /* A secret-revealing root hash can only be submitted during a period
+     * after T0 and before T0 + SECRET_REVEALING_PERIOD
+     * where T0 is the time the corresponding block was submitted
+    */
+    uint256 constant SECRET_REVEALING_PERIOD = 1 days;
+
+    bool paused;
+
+    uint64 public numCoins = 0;
+    mapping (uint64 => Coin) coins;
+
+    uint256 constant BOND_AMOUNT = 0.1 ether;
+    mapping (address => Balance) public balances;
+    mapping (uint64 => ChallengeLib.Challenge[]) challenges;
 
     // child chain
     uint256 public childBlockInterval = 1000;
     uint256 public currentBlock = 0;
     mapping (uint256 => ChildBlock) public childChain;
     mapping (uint256 => ChildBlock) public secretRevealingChain;
-
 
     ValidatorManagerContract vmc;
     SparseMerkleTree smt;
@@ -242,15 +216,22 @@ contract RootChain is IERC721Receiver {
         smt = new SparseMerkleTree();
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////
+    ////   Block submissions
+    //////////////////////////////////////////////////////////////////////////////////
 
-    /// @dev called by a Validator to append a Plasma block to the Plasma chain
-    /// @param root The transaction root hash of the Plasma block being added
+
+    /**
+     * @dev called by a Validator to append a Plasma block to the Plasma chain
+     * @notice Emits SubmittedBlock event
+     * @param blockNumber Number of the block to submit
+     * @param root        The transaction root hash of the Plasma block being added
+    */
     function submitBlock(uint256 blockNumber, bytes32 root) public isValidator {
-
-        // rounding to next whole `childBlockInterval`
         require(blockNumber >= currentBlock, "A block less than currentBlock cannot be submitted");
-        currentBlock = blockNumber;
+        require(blockNumber % childBlockInterval == 0, "A submitted block must be childBlockInterval numbered");
 
+        currentBlock = blockNumber;
         childChain[currentBlock] = ChildBlock({
             root: root,
             createdAt: block.timestamp
@@ -259,11 +240,15 @@ contract RootChain is IERC721Receiver {
         emit SubmittedBlock(currentBlock, root, block.timestamp);
     }
 
-    /// @dev called by a Validator to append a Secret Revealing block to the Plasma chain
-    /// @param root The transaction root hash of the Secret Revealing block being added
+    /**
+     * @dev called by a Validator to append a Secret Revealing Plasma block to the Plasma chain. It has to be withing
+     *      SECRET_REVEALING_PERIOD from the submission of the blockNumber block.
+     * @notice Emits SubmittedSecretBlock event
+     * @param blockNumber Number of the block corresponding to this secretBlock
+     * @param root        The transaction root hash of the Plasma block being added
+    */
     function submitSecretBlock(uint256 blockNumber, bytes32 root) public isValidator {
 
-        // rounding to next whole `childBlockInterval`
         ChildBlock memory childBlock = childChain[blockNumber];
         require(childBlock.root != 0, "A block must be submitted first in order to reveal the swap secrets");
         require((block.timestamp - childBlock.createdAt) < SECRET_REVEALING_PERIOD ,
@@ -277,17 +262,21 @@ contract RootChain is IERC721Receiver {
         emit SubmittedSecretBlock(blockNumber, root, block.timestamp);
     }
 
-    /// @dev Allows anyone to deposit funds into the Plasma chain, called when
-    //       contract receives ERC721
-    /// @notice Appends a deposit block to the Plasma chain
-    /// @param from The address of the user who is depositing a coin
-    /// @param uid The uid of the ERC721 coin being deposited. This is an
-    ///            identifier allocated by the ERC721 token contract; it is not
-    ///            related to `slot`. If the coin is ETH or ERC20 the uid is 0
+    /** @dev Allows anyone to deposit funds into the Plasma chain, called when contract receives ERC721
+      * @notice Appends a deposit block to the Plasma chain
+      * @notice Emits Deposit event
+      * @param from             The address of the user who is depositing a coin
+      * @param contractAddress  The address implementing the ERC721 creator of the token
+      * @param uid              The uid of the ERC721 coin being deposited. This is an identifier allocated by the
+      *                         ERC721 token contract; it is not related to `slot`.
+      */
     function deposit(address from, address contractAddress, uint256 uid) private {
 
         require(!paused, "Contract is not accepting more deposits!");
+        //Deposit blocks are added by 1 each time, so there can be interpolated within the childBlockInterval without problem.
         currentBlock = currentBlock.add(1);
+
+        //Slot is created uniquely for any deposit. If the same coin is deposited again after exited, it will have a new slot.
         uint64 slot = uint64(bytes8(keccak256(abi.encodePacked(numCoins, msg.sender, from))));
 
         // Update state. Leave `exit` empty
@@ -304,21 +293,20 @@ contract RootChain is IERC721Receiver {
             createdAt: block.timestamp
         });
 
-        // create a utxo at `slot`
-        emit Deposit(
-            slot,
-            currentBlock,
-            from,
-            contractAddress
-        );
-
         numCoins += 1;
+
+        emit Deposit(slot, currentBlock, from, contractAddress);
     }
 
-    /******************** EXIT RELATED ********************/
+    ///////////////////////////////////////////////////////////////////////////////////
+    ////   Exits
+    //////////////////////////////////////////////////////////////////////////////////
 
-    // @dev Allows and exit of a deposited transaction
-    // @param slot The slot of the coin being exited
+    /**
+     * @dev Allows and exit of a deposit transaction
+     * @notice Emits StartedExit event
+     * @param slot The slot of the coin being exited
+     */
     function startDepositExit(uint64 slot) external payable isBonded isState(slot, State.NOT_EXITING) {
 
         Coin memory coin = coins[slot];
@@ -326,7 +314,20 @@ contract RootChain is IERC721Receiver {
         pushExit(slot, address(0), 0, coin.depositBlock);
     }
 
-    // @dev Allows and exit of a non-depositing transaction
+    /**
+     * @dev Allows and exit of a non-deposit transaction. See `checkBothIncludedAndSigned` for conditions
+     * @notice Emits StartedExit event
+     * @notice must be bonded with BOND_AMOUNT
+     * @param slot                    The slot of the coin being exited
+     * @param prevTxBytes             The bytes corresponding to the immediate previous transaction to exitingTxBytes.
+     * @param exitingTxBytes          The bytes transaction to be exited. Needs to be the last valid transaction of the
+     *                                slot in order not to be able to be challenged. Owner of it must be msg.sender.
+     * @param prevTxInclusionProof    An inclusion proof of `prevTxBytes`
+     * @param exitingTxInclusionProof An inclusion proof of `exitingTxBytes`
+     * @param signature               Signature of exitingTxBytes. Must be signed by the recipient of prevTxBytes.
+     * @param blocks                  The blocks (array of size 2) corresponding to prevTxBytes and exitingTxBytes in that order
+     *                                to validate their correct inclusion
+     */
     function startExit(
         uint64 slot,
         bytes calldata prevTxBytes, bytes calldata exitingTxBytes,
@@ -336,48 +337,26 @@ contract RootChain is IERC721Receiver {
     ) external payable isBonded isState(slot, State.NOT_EXITING) {
 
         require(msg.sender == exitingTxBytes.getOwner(), "Sender does not match exitingTxBytes owner");
-        doInclusionChecks(
-            prevTxBytes, exitingTxBytes,
-            prevTxInclusionProof, exitingTxInclusionProof,
-            signature,
-            blocks
+        if (blocks[1] % childBlockInterval != 0) {
+            revert("Please do a startDepositExit for deposited transactions");
+        }
+
+        checkBothIncludedAndSigned(
+            prevTxBytes, exitingTxBytes, prevTxInclusionProof, exitingTxInclusionProof, signature,blocks
         );
 
         pushExit(slot, prevTxBytes.getOwner(), blocks[0], blocks[1]);
     }
 
-    /// @dev Verifies that consecutive two transaction involving the same coin
-    ///      are valid
-    /// @notice If exitingTxBytes corresponds to a deposit transaction, this function fails
-    /// @param prevTxBytes The RLP-encoded transaction involving a particular
-    ///        coin which took place directly before exitingTxBytes
-    /// @param exitingTxBytes The RLP-encoded transaction involving a particular
-    ///        coin which an exiting owner of the coin claims to be the latest
-    /// @param prevTxInclusionProof An inclusion proof of prevTx
-    /// @param exitingTxInclusionProof An inclusion proof of exitingTx
-    /// @param signature The signature of the exitingTxBytes by the coin
-    ///        owner indicated in prevTx.
-    /// @param blocks An array of two block numbers, at index 0, the block
-    ///        containing the prevTx and at index 1, the block containing
-    ///        the exitingTx
-    function doInclusionChecks(
-        bytes memory prevTxBytes, bytes memory exitingTxBytes,
-        bytes memory prevTxInclusionProof, bytes memory exitingTxInclusionProof,
-        bytes memory signature,
-        uint256[2] memory blocks
-    ) public view {
-
-        if (blocks[1] % childBlockInterval != 0) {
-            revert("Please do a startDepositExit for deposited transactions");
-        } else {
-            checkBothIncludedAndSigned(
-                prevTxBytes, exitingTxBytes, prevTxInclusionProof,
-                exitingTxInclusionProof, signature,
-                blocks
-            );
-        }
-    }
-
+    /**
+      * @dev Generates an Exit and adds it it to the coin.
+      * @notice Emits StartedExit event
+      * @notice Adds exit to coin and changes it state to EXITING
+      * @param slot          The slot of the coin being exited
+      * @param prevOwner     The supposed previous to last owner of the coin in the plasma chain.
+      * @param prevBlock     The supposed previous to last block that the coin was spent on
+      * @param exitingBlock  The supposed last block that the coin was spent on
+      */
     function pushExit(
         uint64 slot,
         address prevOwner,
@@ -400,16 +379,22 @@ contract RootChain is IERC721Receiver {
         emit StartedExit(slot, msg.sender);
     }
 
-    /// @dev Finalizes an exit, i.e. puts the exiting coin into the EXITED
-    ///      state which will allow it to be withdrawn, provided the exit has
-    ///      matured and has not been successfully challenged
+
+    /**
+      * @dev Finalizes an exit, i.e. puts the exiting coin into the EXITED state and withdraws it,
+      *      provided the exit has matured and has not been successfully challenged, else if a challenge is present,
+      *      resets the coin and awards the challenger with the bond.
+      * @notice Changes coin's state to EXITED
+      * @notice Emits FinalizedExit event if no challenges are present
+      * @notice Emits CoinReset event if there are challenges present
+      * @param slot          The slot of the coin being exited
+      */
     function finalizeExit(uint64 slot) isState(slot, State.EXITING) public {
 
         Coin storage coin = coins[slot];
         require((block.timestamp - coin.exit.createdAt) > MATURITY_PERIOD, "You must wait the maturity period before finalizing the exit");
 
-        // Check if there are any pending challenges for the coin.
-        // `checkPendingChallenges` will also penalize
+        // Check if there are any pending challenges for the coin. `checkPendingChallenges` will also penalize
         // for each challenge that has not been responded to
         bool hasChallenges = checkPendingChallenges(slot);
 
@@ -422,6 +407,7 @@ contract RootChain is IERC721Receiver {
             freeBond(coin.owner);
 
             emit FinalizedExit(slot, coin.owner);
+            withdraw(slot);
         } else {
             // Reset coin state since it was challenged
             coin.state = State.NOT_EXITING;
@@ -453,14 +439,18 @@ contract RootChain is IERC721Receiver {
         }
     }
 
-    /// @dev Iterates through all of the initiated exits and finalizes those
-    ///      which have matured without being successfully challenged
-    function finalizeExits(uint64[] calldata slots) external {
+    /// @dev Withdraw a UTXO that has been exited
+    /// @param slot The slot of the coin being withdrawn
+    function withdraw(uint64 slot) public isState(slot, State.EXITED) {
+        require(coins[slot].owner == msg.sender, "You do not own that slot");
+        uint256 uid = coins[slot].uid;
 
-        uint256 slotsLength = slots.length;
-        for (uint256 i = 0; i < slotsLength; i++) {
-            finalizeExit(slots[i]);
-        }
+        // Delete the coin that is being withdrawn
+        Coin memory c = coins[slot];
+        delete coins[slot];
+        ERC721(c.contractAddress).safeTransferFrom(address(this), msg.sender, uid);
+
+        emit Withdrew(msg.sender, slot, c.contractAddress, uid);
     }
 
     function cancelExit(uint64 slot) public {
@@ -472,33 +462,6 @@ contract RootChain is IERC721Receiver {
         emit CoinReset(slot, coins[slot].owner);
     }
 
-    function cancelExits(uint64[] calldata slots) external {
-
-        uint256 slotsLength = slots.length;
-        for (uint256 i = 0; i < slotsLength; i++) {
-            cancelExit(slots[i]);
-        }
-    }
-
-    /// @dev Withdraw a UTXO that has been exited
-    /// @param slot The slot of the coin being withdrawn
-    function withdraw(uint64 slot) external isState(slot, State.EXITED) {
-
-        require(coins[slot].owner == msg.sender, "You do not own that UTXO");
-        uint256 uid = coins[slot].uid;
-
-        // Delete the coin that is being withdrawn
-        Coin memory c = coins[slot];
-        delete coins[slot];
-        ERC721(c.contractAddress).safeTransferFrom(address(this), msg.sender, uid);
-
-        emit Withdrew(
-            msg.sender,
-            slot,
-            c.contractAddress,
-            uid
-        );
-    }
 
     /******************** CHALLENGES ********************/
 
@@ -716,12 +679,26 @@ contract RootChain is IERC721Receiver {
 
     /******************** PROOF CHECKING ********************/
 
+    /// @dev Verifies that consecutive two transaction involving the same coin
+    ///      are valid
+    /// @notice If exitingTxBytes corresponds to a deposit transaction, this function fails
+    /// @param prevTxBytes The RLP-encoded transaction involving a particular
+    ///        coin which took place directly before exitingTxBytes
+    /// @param exitingTxBytes The RLP-encoded transaction involving a particular
+    ///        coin which an exiting owner of the coin claims to be the latest
+    /// @param prevTxInclusionProof An inclusion proof of prevTx
+    /// @param exitingTxInclusionProof An inclusion proof of exitingTx
+    /// @param signature The signature of the exitingTxBytes by the coin
+    ///        owner indicated in prevTx.
+    /// @param blocks An array of two block numbers, at index 0, the block
+    ///        containing the prevTx and at index 1, the block containing
+    ///        the exitingTx
     function checkBothIncludedAndSigned(
         bytes memory prevTxBytes, bytes memory exitingTxBytes,
         bytes memory prevTxInclusionProof, bytes memory exitingTxInclusionProof,
         bytes memory signature,
         uint256[2] memory blocks
-    ) private view {
+    ) public view {
 
         require(blocks[0] < blocks[1], "Block on the first index must be the earlier of the 2 blocks");
 
@@ -950,4 +927,28 @@ contract RootChain is IERC721Receiver {
         // Can only withdraw bond if the msg.sender
         return (balances[msg.sender].bonded, balances[msg.sender].withdrawable);
     }
+
+    modifier isValidator() {
+        require(vmc.checkValidator(msg.sender), "Sender is not a Validator");
+        _;
+    }
+
+    modifier isTokenApproved(address _address) {
+        require(vmc.allowedTokens(_address), "Contract address is not approved for deposits");
+        _;
+    }
+
+    modifier isBonded() {
+        require(msg.value == BOND_AMOUNT, "Transaction must be accompanied by the BOND AMOUNT");
+
+        // Save challenger's bond
+        balances[msg.sender].bonded = balances[msg.sender].bonded.add(msg.value);
+        _;
+    }
+
+    modifier isState(uint64 slot, State state) {
+        require(coins[slot].state == state, "Wrong coin state");
+        _;
+    }
+
 }

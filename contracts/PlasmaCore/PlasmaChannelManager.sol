@@ -269,6 +269,9 @@ contract PlasmaCM {
 
         funds[msg.sender] = funds[msg.sender] + channel.stake;
         emit ChannelConcluded(channelId, channel.players[0], channel.players[1], channel.channelType);
+        delete channels[channelId];
+        delete challenges[channelId];
+        delete exits[channelId];
     }
 
     /**
@@ -300,6 +303,9 @@ contract PlasmaCM {
         channel.state = ChannelState.CLOSED;
         funds[channel.forceMoveChallenge.winner] += channel.stake * 2;
         emit ChannelConcluded(channelId, channel.players[0], channel.players[1], channel.channelType);
+        delete channels[channelId];
+        delete challenges[channelId];
+        delete exits[channelId];
     }
 
     /**
@@ -321,7 +327,7 @@ contract PlasmaCM {
      * @notice Modifies the channel's forceMoveChallenge if there isn't any
      * @param channelId  Unique identifier of the channel
      * @param initialState The initial state of the channel. Must comply with the initialArgumentsHash of the channel.
-                           Will be the starting point to validate the forceMove response
+     *                     Will be the starting point to validate the forceMove response
      */
     function forceFirstMove(
         uint channelId,
@@ -336,7 +342,7 @@ contract PlasmaCM {
      * @notice Modifies the channel's forceMoveChallenge if there isn't any.
      * @notice Emits ForceMoveRequested event
      * @notice Either the fromState or toState must be signed one by each of the channel's participants to be a valid
-               transition, so it is ok to assume both parties agreed on these states.
+     *         transition, so it is ok to assume both parties agreed on these states.
      * @param channelId  Unique identifier of the channel
      * @param fromState   The previous to current state of the channel
      * @param toState     The current state of the channel. Must be a valid transition from fromState
@@ -373,13 +379,13 @@ contract PlasmaCM {
 
     /**
      * @dev Allows the response of an active forceMove Challenge by canceling with a different state signed by the
-            challenge's issuer. Then proceeds to create a challenge for the alternativeState.
+     *      challenge's issuer. Then proceeds to create a challenge for the alternativeState.
      * @notice Changes the channel's forceMoveChallenge if there is any.
      * @notice Emits ForceMoveResponded event
      * @notice Emits ForceMoveRequested event
      * @param channelId  Unique identifier of the channel
      * @param alternativeState  The state replacing the challenge's state. Must have the same turnNum as it,
-                                and thus, be signed by the same person.
+     *                          and thus, be signed by the same person.
      * @param nextState         The next state of the channel. Must be a valid transition from the alternativeState.
      * @param signatures        The signatures (array of size 2) corresponding to alternativeState and nextState in that order
      */
@@ -401,7 +407,7 @@ contract PlasmaCM {
 
     /**
      * @dev Allows a user to challenge a funded channel's exit, by providing a direct spend, in order to prevent the
-            use of unauthorized tokens.
+     *      use of unauthorized tokens.
      * @notice Emits ChannelChallenged event
      * @notice Sets channel's state to CHALLENGED
      * @param channelId   Unique identifier of the channel
@@ -425,13 +431,16 @@ contract PlasmaCM {
         channel.state = ChannelState.CHALLENGED;
         funds[msg.sender] += channel.stake * 2;
         emit ChannelChallenged(channelId, index, channel.players[0], channel.players[1], msg.sender);
+        delete channels[channelId];
+        delete challenges[channelId];
+        delete exits[channelId];
     }
 
     /**
      * @dev Checks a transaction to be a direct spend from an Exit
      * @param exit        RootChain.Exit exit to be challenged
      * @param txBytes     RLP encoded bytes of the transaction to make a Challenge After. Should be a direct spend.
-                          Has to be the same slot, signed by the same owner and its' prevBlock equal to exit's exitBlock
+     *                     Has to be the same slot, signed by the same owner and its' prevBlock equal to exit's exitBlock
      * @param proof       Bytes needed for the proof of inclusion of txBytes in the Plasma block
      * @param blockNumber BlockNumber of the transaction to be checked for the inclusion proof. Must be greater to
      *                    exit.exitBlock.
@@ -454,7 +463,7 @@ contract PlasmaCM {
 
     /**
      * @dev Allows a user to challenge a funded channel's exit, by providing a previous double spend, in order to prevent the
-            use of unauthorized tokens.
+     *      use of unauthorized tokens.
      * @notice Emits ChannelChallenged event
      * @notice Sets channel's state to CHALLENGED
      * @param channelId   Unique identifier of the channel
@@ -478,14 +487,17 @@ contract PlasmaCM {
         channel.state = ChannelState.CHALLENGED;
         funds[msg.sender] += channel.stake * 2;
         emit ChannelChallenged(channelId, index, channel.players[0], channel.players[1], msg.sender);
+        delete channels[channelId];
+        delete challenges[channelId];
+        delete exits[channelId];
     }
 
     /**
      * @dev Checks a transaction to be a previous double spend from an Exit
      * @param exit        RootChain.Exit exit to be challenged
      * @param txBytes     RLP encoded bytes of the transaction to make a Challenge Between. Should be a direct spend of
-                          the exit.prevBlock. Has to be the same slot, signed by the same owner and the blockNumber
-                          Should be before exit.exitBlock.
+     *                    the exit.prevBlock. Has to be the same slot, signed by the same owner and the blockNumber
+     *                    Should be before exit.exitBlock.
      * @param proof       Bytes needed for the proof of inclusion of txBytes in the Plasma block
      * @param blockNumber BlockNumber of the transaction to be checked for the inclusion proof. Must be between exit.prevBlock
      *                    and exit.exitBlock.
@@ -510,7 +522,7 @@ contract PlasmaCM {
 
     /**
      * @dev Allows a user to create a Plasma Challenge targeting a funded channel's exit in order to prevent the use of
-            unauthorized tokens.
+     *       unauthorized tokens.
      * @notice Pushes a ChallengeLib.Challenge to challenges
      * @notice Emits ChallengeRequest event
      * @notice Sets channel's state to SUSPENDED
@@ -570,6 +582,20 @@ contract PlasmaCM {
         require(txData.slot == exit.slot, "Tx is referencing another slot");
     }
 
+    /**
+     * @dev Allows a user to respond to a Plasma Challenge targeting a funded channel's exit. For validity go to CheckResponse
+     * @notice Removes a ChallengeLib.Challenge to challenges
+     * @notice Emits ChallengeResponded event
+     * @notice Sets channel's state to FUNDED if no more challenges are left
+     * @notice The bond is given to the responder.
+     * @param channelId             Unique identifier of the channel
+     * @param index                 Index corresponding to the exit's index to be challenged
+     * @param challengingTxHash     Hash of the transaction being challenged with.
+     * @param respondingBlockNumber BlockNumber of the respondingTransaction to be checked for the inclusion proof.
+     * @param respondingTransaction Transaction signed by the challengingTxHash owner showing a spent
+     * @param proof                 Bytes needed for the proof of inclusion of respondingTransaction in the Plasma block
+     * @param signature             Signature of the respondingTransaction to prove its validity
+     */
     function respondChallengeBefore(
         uint channelId,
         uint index,
@@ -613,6 +639,17 @@ contract PlasmaCM {
         emit ChallengeResponded(_channelId, _index, challenge.txHash, channel.players[0], channel.players[1], challenge.challenger);
     }
 
+    /**
+     * @dev Checks a Plasma Challenge's response against an exit.
+     * @param exit        RootChain.Exit exit to be challenged
+     * @param challenge   ChallengeLib.Challenge challenge to respond to
+     * @param blockNumber BlockNumber of the transaction to be checked for the inclusion proof. Should be a future spend of
+     *                    the challenge.challengingBlockNumber but before the exit.exitBlock. Has to be the same slot,
+     *                    signed by the same owner.
+     * @param txBytes     RLP encoded bytes of the transaction to proof the spending of the challenge. Must
+     * @param proof       Bytes needed for the proof of inclusion of txBytes in the Plasma block
+     * @param signature   Signature of the txBytes to prove its validity. Must be signed by the challenged owner
+     */
     function checkResponse(
         RootChain.Exit memory exit,
         ChallengeLib.Challenge memory challenge,
@@ -630,6 +667,14 @@ contract PlasmaCM {
         require(blockNumber <= exit.exitBlock, "Cannot respond with a tx after the exit");
     }
 
+    /**
+     * @dev Allows a user to close and unanswered channel after a Challenge Before was made
+     * @notice Removes a ChallengeLib.Challenge to challenges
+     * @notice Emits ChannelChallenged event
+     * @notice Sets channel's state to CHALLENGED
+     * @notice The bond is returned to the challengers, with the stakes of the channel to the first valid one.
+     * @param channelId             Unique identifier of the channel
+     */
     function closeChallengedChannel(
         uint channelId
     ) external channelExists(channelId) isSuspended(channelId) {
@@ -646,6 +691,9 @@ contract PlasmaCM {
         ChallengeLib.Challenge memory firstChallenge = channelChallenges[0];
         funds[firstChallenge.challenger] += channel.stake * 2;
         emit ChannelChallenged(channelId, 0, channel.players[0], channel.players[1], firstChallenge.challenger);
+        delete channels[channelId];
+        delete challenges[channelId];
+        delete exits[channelId];
     }
 
     ///////////////////////////////////////////////////////////////////////////////////
