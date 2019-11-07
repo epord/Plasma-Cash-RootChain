@@ -82,7 +82,7 @@ contract RootChain is IERC721Receiver {
      * @notice This only logs responses to `challengeBefore`
      * @param slot The slot of the coin whose challenge was responded to
      */
-    event RespondedExitChallenge(uint64 indexed slot);
+    event RespondedExitChallenge(uint64 indexed slot,  address indexed owner,  address indexed challenger);
 
     /**
      * Event for logging when an exit was successfully challenged
@@ -96,7 +96,7 @@ contract RootChain is IERC721Receiver {
      * @param slot  The slot of the coin whose exit has been finalized
      * @param owner The owner of the coin whose exit has been finalized
      */
-    event FinalizedExit(uint64 indexed slot, address owner);
+    event FinalizedExit(uint64 indexed slot, address indexed owner);
 
     /**
      * Event to log the freeing of a bond
@@ -731,8 +731,10 @@ contract RootChain is IERC721Receiver {
         // If the exit was actually challenged and responded, penalize the challenger and award the responder
         slashBond(challenges[slot][index].challenger, msg.sender);
 
+        address challenger = challenges[slot][index].challenger;
         challenges[slot].remove(challengingTxHash);
-        emit RespondedExitChallenge(slot);
+        Coin storage coin = coins[slot];
+        emit RespondedExitChallenge(slot, coin.exit.owner, challenger);
     }
 
     /**
