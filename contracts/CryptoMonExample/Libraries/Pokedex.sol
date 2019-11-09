@@ -221,7 +221,7 @@ contract Pokedex {
         }
 
         uint8 id       = uint8(uint256(rng & bytes32(uint256(0xFF)))            ) + 1;
-        bool gender    = uint8(uint256(rng & bytes32(uint256(0x100)))           / (2 ** 8)) == 1;
+        bool gender    = uint256(rng & bytes32(uint256(0x100)))           / (2 ** 8) == 1;
         uint8 hp       = uint8(uint256(rng & bytes32(uint256(0x3E00)))          / (2 ** 9));
         uint8 atk      = uint8(uint256(rng & bytes32(uint256(0x7C000)))         / (2 ** 14));
         uint8 def      = uint8(uint256(rng & bytes32(uint256(0xF80000)))        / (2 ** 19));

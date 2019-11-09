@@ -12,6 +12,7 @@ pragma solidity ^0.5.2;
 
 library ChallengeLib {
     struct Challenge {
+        address exitor;
         address owner;
         address challenger;
         bytes32 txHash;

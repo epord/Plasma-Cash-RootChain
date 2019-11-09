@@ -690,6 +690,7 @@ contract RootChain is IERC721Receiver {
         // that the response is valid
         challenges[slot].push(
             ChallengeLib.Challenge({
+            exitor: coins[slot].exit.owner,
             owner: owner,
             challenger: msg.sender,
             txHash: txHash,

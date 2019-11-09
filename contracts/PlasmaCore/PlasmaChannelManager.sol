@@ -64,12 +64,8 @@ contract PlasmaCM {
      * @param exitIndex   Index corresponding to the exit's index to be challenged
      * @param creator     Creator of the channel, also known as player
      * @param opponent    Opponent of the channel
-     * @param challenger  Address of the challenge issuer
      */
-    event ChannelChallenged(
-        uint indexed channelId, uint exitIndex,
-        address indexed creator, address indexed opponent, address challenger
-    );
+    event ChannelChallenged(uint indexed channelId, uint exitIndex, address indexed creator, address indexed opponent);
 
     /**
      * Event for the creation of a Plasma challenge inside a channel.
@@ -430,7 +426,7 @@ contract PlasmaCM {
         FMChannel storage channel = channels[channelId];
         channel.state = ChannelState.CHALLENGED;
         funds[msg.sender] += channel.stake * 2;
-        emit ChannelChallenged(channelId, index, channel.players[0], channel.players[1], msg.sender);
+        emit ChannelChallenged(channelId, index, channel.players[0], channel.players[1]);
         delete channels[channelId];
         delete challenges[channelId];
         delete exits[channelId];
@@ -486,7 +482,7 @@ contract PlasmaCM {
         FMChannel storage channel = channels[channelId];
         channel.state = ChannelState.CHALLENGED;
         funds[msg.sender] += channel.stake * 2;
-        emit ChannelChallenged(channelId, index, channel.players[0], channel.players[1], msg.sender);
+        emit ChannelChallenged(channelId, index, channel.players[0], channel.players[1]);
         delete channels[channelId];
         delete challenges[channelId];
         delete exits[channelId];
@@ -551,6 +547,7 @@ contract PlasmaCM {
         // that the response is valid
         challenges[channelId].push(
             ChallengeLib.Challenge({
+            exitor: exits[channelId][index].owner,
             owner:  txBytes.getOwner(),
             challenger: msg.sender,
             txHash: txHash,
@@ -684,14 +681,30 @@ contract PlasmaCM {
 
         ChallengeLib.Challenge[] memory channelChallenges = challenges[channelId];
 
+        bool playerChallenged = false;
+        bool opponentChallenged = false;
+
         for(uint i=0; i<channelChallenges.length; i++) {
+            if(!playerChallenged && channelChallenges[i].exitor == channel.players[0]) {
+                playerChallenged = true;
+                funds[channelChallenges[i].challenger] += channel.stake;
+            } else if(!opponentChallenged && channelChallenges[i].exitor == channel.players[1]) {
+                funds[channelChallenges[i].challenger] += channel.stake;
+                opponentChallenged = true;
+            }
             funds[channelChallenges[i].challenger] += CHALLENGE_BOND;
         }
 
         channel.state = ChannelState.CHALLENGED;
-        ChallengeLib.Challenge memory firstChallenge = channelChallenges[0];
-        funds[firstChallenge.challenger] += channel.stake * 2;
-        emit ChannelChallenged(channelId, 0, channel.players[0], channel.players[1], firstChallenge.challenger);
+        if(!playerChallenged) {
+            funds[channel.players[0]] += channel.stake;
+        }
+
+        if(!opponentChallenged) {
+            funds[channel.players[1]] += channel.stake;
+        }
+
+        emit ChannelChallenged(channelId, 0, channel.players[0], channel.players[1]);
         delete channels[channelId];
         delete challenges[channelId];
         delete exits[channelId];
