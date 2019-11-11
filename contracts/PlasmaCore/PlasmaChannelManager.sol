@@ -52,9 +52,8 @@ contract PlasmaCM {
      * @param channelId   Unique identifier of the channel
      * @param creator     Creator of the channel, also known as player
      * @param opponent    Opponent of the channel
-     * @param channelType The address of PlasmaTurnGame implementation contract which determines the game
      */
-    event ChannelConcluded(uint channelId, address indexed creator, address indexed opponent, address channelType);
+    event ChannelConcluded(uint indexed channelId, address indexed creator, address indexed opponent);
 
     /**
      * Event for the closure of a channel due to a Plasma challenge being issued.
@@ -264,7 +263,7 @@ contract PlasmaCM {
         channel.state = ChannelState.CLOSED;
 
         funds[msg.sender] = funds[msg.sender] + channel.stake;
-        emit ChannelConcluded(channelId, channel.players[0], channel.players[1], channel.channelType);
+        emit ChannelConcluded(channelId, channel.players[0], channel.players[1]);
         delete channels[channelId];
         delete challenges[channelId];
         delete exits[channelId];
@@ -298,7 +297,7 @@ contract PlasmaCM {
 
         channel.state = ChannelState.CLOSED;
         funds[channel.forceMoveChallenge.winner] += channel.stake * 2;
-        emit ChannelConcluded(channelId, channel.players[0], channel.players[1], channel.channelType);
+        emit ChannelConcluded(channelId, channel.players[0], channel.players[1]);
         delete channels[channelId];
         delete challenges[channelId];
         delete exits[channelId];
@@ -421,9 +420,11 @@ contract PlasmaCM {
         bytes calldata signature,
         uint256 blockNumber)
     external channelExists(channelId) isFunded(channelId) {
+        FMChannel storage channel = channels[channelId];
+        ( ,uint createdAt) = rootChain.getBlock(blockNumber);
+        require(createdAt < channel.fundedTimestamp, "Challenge After block must be previous to channel creation");
         checkAfter(exits[channelId][index], txBytes, proof, signature, blockNumber);
 
-        FMChannel storage channel = channels[channelId];
         channel.state = ChannelState.CHALLENGED;
         funds[msg.sender] += channel.stake * 2;
         emit ChannelChallenged(channelId, index, channel.players[0], channel.players[1]);
