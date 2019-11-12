@@ -12,11 +12,12 @@ import "openzeppelin-solidity/contracts/token/ERC721/IERC721Receiver.sol";
 import "openzeppelin-solidity/contracts/math/SafeMath.sol";
 import "./Libraries/Transaction/Transaction.sol";
 import "./Libraries/ECVerify.sol";
-import "./Libraries/ChallengeLib.sol";
+import "./Libraries/Plasma/ChallengeLib.sol";
 
 // SMT and VMC
 import "./Supporting/ValidatorManagerContract.sol";
 import "./Supporting/SparseMerkleTree.sol";
+import "./Libraries/Plasma/PlasmaChallenges.sol";
 
 
 contract RootChain is IERC721Receiver {
@@ -28,6 +29,7 @@ contract RootChain is IERC721Receiver {
     using Transaction for Transaction.AtomicSwapTX;
     using ECVerify for bytes32;
     using ChallengeLib for ChallengeLib.Challenge[];
+    using PlasmaChallenges for RootChain.Exit;
 
     ///////////////////////////////////////////////////////////////////////////////////
     ////   EVENTS
@@ -522,36 +524,9 @@ contract RootChain is IERC721Receiver {
         bytes calldata signature,
         uint256 blockNumber
     ) external isState(slot, State.EXITING) {
-
-        checkAfter(slot, txBytes, proof, signature, blockNumber);
+        Exit memory exit = coins[slot].exit;
+        exit.checkAfter(this, txBytes, proof, signature, blockNumber);
         applyPenalties(slot);
-    }
-
-   /**
-    * @dev Checks a transaction to be a direct spend from an Exit
-    * @param slot        The slot to be challenged
-    * @param txBytes     RLP encoded bytes of the transaction to make a Challenge After. Should be a direct spend.
-    *                     Has to be the same slot, signed by the same owner and its' prevBlock equal to exit's exitBlock
-    * @param proof       Bytes needed for the proof of inclusion of txBytes in the Plasma block
-    * @param blockNumber BlockNumber of the transaction to be checked for the inclusion proof. Must be greater than exit.exitBlock.
-    */
-    function checkAfter(
-        uint64 slot,
-        bytes memory txBytes,
-        bytes memory proof,
-        bytes memory signature,
-        uint blockNumber
-    ) private view {
-
-        require(
-            coins[slot].exit.exitBlock < blockNumber,
-            "Tx should be after the exitBlock"
-        );
-
-        Transaction.TX memory txData = checkTxValid(txBytes, proof, blockNumber);
-        require(txData.hash.ecverify(signature, coins[slot].exit.owner), "Invalid signature");
-        require(txData.slot == slot, "Tx is referencing another slot");
-        require(txData.prevBlock == coins[slot].exit.exitBlock, "Not a direct spend");
     }
 
     /**
@@ -571,38 +546,9 @@ contract RootChain is IERC721Receiver {
         bytes calldata signature,
         uint256 blockNumber
     ) external isState(slot, State.EXITING) {
-
-        checkBetween(slot, txBytes, proof, signature, blockNumber);
+        Exit memory exit = coins[slot].exit;
+        exit.checkBetween(this, txBytes, proof, signature, blockNumber);
         applyPenalties(slot);
-    }
-
-   /**
-    * @dev Checks a transaction to be a previous double spend from an Exit
-    * @param slot        The slot to be challenged
-    * @param txBytes     RLP encoded bytes of the transaction to make a Challenge Between. Should be a direct spend of
-    *                    the exit.prevBlock. Has to be the same slot, signed by the same owner and the blockNumber
-    *                    Should be before exit.exitBlock.
-    * @param proof       Bytes needed for the proof of inclusion of txBytes in the Plasma block
-    * @param blockNumber BlockNumber of the transaction to be checked for the inclusion proof. Must be between exit.prevBlock
-    *                    and exit.exitBlock.
-    */
-    function checkBetween(
-        uint64 slot,
-        bytes memory txBytes,
-        bytes memory proof,
-        bytes memory signature,
-        uint blockNumber
-    ) private view {
-
-        require(
-            coins[slot].exit.exitBlock > blockNumber &&
-            coins[slot].exit.prevBlock < blockNumber,
-            "Tx should be between the exit's blocks"
-        );
-
-        Transaction.TX memory txData = checkTxValid(txBytes, proof, blockNumber);
-        require(txData.hash.ecverify(signature, coins[slot].exit.prevOwner), "Invalid signature");
-        require(txData.slot == slot, "Tx is referencing another slot");
     }
 
     /**
@@ -639,32 +585,8 @@ contract RootChain is IERC721Receiver {
         uint256 blockNumber
     ) external payable isBonded isState(slot, State.EXITING) {
 
-        checkBefore(slot, txBytes, proof, blockNumber);
+        coins[slot].exit.checkBefore(this, txBytes, proof, blockNumber);
         setChallenged(slot, txBytes.getOwner(), blockNumber, txBytes.getHash());
-    }
-
-   /**
-    * @dev Checks a transaction against an exit for a Challenge Before
-    * @param slot        The slot to be challenged
-    * @param txBytes     RLP encoded bytes of the transaction to make a Challenge Before.
-    * @param proof       Bytes needed for the proof of inclusion of txBytes in the Plasma block
-    * @param blockNumber BlockNumber of the transaction to be checked for the inclusion proof. Must be previous to
-    *                    exit.prevBlock.
-    */
-    function checkBefore(
-        uint64 slot,
-        bytes memory txBytes,
-        bytes memory proof,
-        uint blockNumber
-    ) private view {
-
-        require(
-            blockNumber <= coins[slot].exit.prevBlock,
-            "Tx should be before the exit's parent block"
-        );
-
-        Transaction.TX memory txData = checkTxValid(txBytes, proof, blockNumber);
-        require(txData.slot == slot, "Tx is referencing another slot");
     }
 
    /**
@@ -727,41 +649,14 @@ contract RootChain is IERC721Receiver {
         // Get index of challenge in the challenges array
         uint256 index = uint256(challenges[slot].indexOf(challengingTxHash));
 
-        checkResponse(slot, index, respondingBlockNumber, respondingTransaction, signature, proof);
+        ChallengeLib.Challenge memory challenge = challenges[slot][index];
+        Exit memory exit = coins[slot].exit;
+        exit.checkResponse(this, challenge, respondingBlockNumber, respondingTransaction, signature, proof);
 
         // If the exit was actually challenged and responded, penalize the challenger and award the responder
-        slashBond(challenges[slot][index].challenger, msg.sender);
-
-        address challenger = challenges[slot][index].challenger;
+        slashBond(challenge.challenger, msg.sender);
         challenges[slot].remove(challengingTxHash);
-        Coin storage coin = coins[slot];
-        emit RespondedExitChallenge(slot, coin.exit.owner, challenger);
-    }
-
-    /**
-     * @dev Checks a Plasma Challenge's response against an exit.
-     * @param slot        The slot to be challenged
-     * @param index       index of the ChallengeLib.Challenge challenge to respond to
-     * @param blockNumber BlockNumber of the transaction to be checked for the inclusion proof. Should be a future spend of
-     *                    the challenge.challengingBlockNumber but before the exit.exitBlock. Has to be the same slot,
-     *                    signed by the same owner.
-     * @param txBytes     RLP encoded bytes of the transaction to proof the spending of the challenge. Must
-     * @param proof       Bytes needed for the proof of inclusion of txBytes in the Plasma block
-     * @param signature   Signature of the txBytes to prove its validity. Must be signed by the challenged owner
-     */
-    function checkResponse(
-        uint64 slot,
-        uint256 index,
-        uint256 blockNumber,
-        bytes memory txBytes,
-        bytes memory signature,
-        bytes memory proof
-    ) private view {
-        Transaction.TX memory txData = checkTxValid(txBytes, proof, blockNumber);
-        require(txData.hash.ecverify(signature, challenges[slot][index].owner), "Invalid signature");
-        require(txData.slot == slot, "Tx is referencing another slot");
-        require(blockNumber > challenges[slot][index].challengingBlockNumber, "BlockNumber must be after the chalenge");
-        require(blockNumber <= coins[slot].exit.exitBlock, "Cannot respond with a tx after the exit");
+        emit RespondedExitChallenge(slot, exit.owner, challenge.challenger);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////

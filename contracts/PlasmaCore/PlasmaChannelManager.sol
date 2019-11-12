@@ -5,9 +5,10 @@ import "openzeppelin-solidity/contracts/drafts/Counters.sol";
 
 import "./Libraries/Battles/Adjudicator.sol";
 import "./Libraries/Transaction/Transaction.sol";
-import "./Libraries/ChallengeLib.sol";
+import "./Libraries/Plasma/ChallengeLib.sol";
 import "./RootChain.sol";
 import "./Libraries/Battles/Rules.sol";
+import "./Libraries/Plasma/PlasmaChallenges.sol";
 
 
 //Plasma Channel Manager
@@ -18,6 +19,7 @@ contract PlasmaCM {
     using State for State.StateStruct;
     using Transaction for bytes;
     using ChallengeLib for ChallengeLib.Challenge[];
+    using PlasmaChallenges for RootChain.Exit;
 
     ///////////////////////////////////////////////////////////////////////////////////
     ////   EVENTS
@@ -420,42 +422,23 @@ contract PlasmaCM {
         bytes calldata signature,
         uint256 blockNumber)
     external channelExists(channelId) isFunded(channelId) {
-        FMChannel storage channel = channels[channelId];
-        ( ,uint createdAt) = rootChain.getBlock(blockNumber);
-        require(createdAt < channel.fundedTimestamp, "Challenge After block must be previous to channel creation");
-        checkAfter(exits[channelId][index], txBytes, proof, signature, blockNumber);
+        RootChain.Exit memory exit = exits[channelId][index];
+        exit.checkAfter(rootChain, txBytes, proof, signature, blockNumber);
 
+        ( ,uint createdAt) = rootChain.getBlock(blockNumber);
+        FMChannel storage channel = channels[channelId];
+        require(createdAt < channel.fundedTimestamp, "Challenge After block must be previous to channel creation");
         channel.state = ChannelState.CHALLENGED;
         funds[msg.sender] += channel.stake * 2;
-        emit ChannelChallenged(channelId, index, channel.players[0], channel.players[1]);
-        delete channels[channelId];
-        delete challenges[channelId];
-        delete exits[channelId];
-    }
 
-    /**
-     * @dev Checks a transaction to be a direct spend from an Exit
-     * @param exit        RootChain.Exit exit to be challenged
-     * @param txBytes     RLP encoded bytes of the transaction to make a Challenge After. Should be a direct spend.
-     *                     Has to be the same slot, signed by the same owner and its' prevBlock equal to exit's exitBlock
-     * @param proof       Bytes needed for the proof of inclusion of txBytes in the Plasma block
-     * @param blockNumber BlockNumber of the transaction to be checked for the inclusion proof. Must be greater to
-     *                    exit.exitBlock.
-     */
-    function checkAfter(
-        RootChain.Exit memory exit,
-        bytes memory txBytes,
-        bytes memory proof,
-        bytes memory signature,
-        uint blockNumber
-    ) private view {
+        //Stack too deep
+        uint _channelId = channelId;
+        uint _index = index;
 
-        require(exit.exitBlock < blockNumber, "Tx should be after the exitBlock");
-        rootChain.checkTX(txBytes, proof, blockNumber);
-        Transaction.TX memory txData = txBytes.getTransaction();
-        require(txData.hash.ecverify(signature, exit.owner), "Invalid signature");
-        require(txData.slot == exit.slot, "Tx is referencing another slot");
-        require(txData.prevBlock == exit.exitBlock, "Not a direct spend");
+        emit ChannelChallenged(_channelId, _index, channel.players[0], channel.players[1]);
+        delete channels[_channelId];
+        delete challenges[_channelId];
+        delete exits[_channelId];
     }
 
     /**
@@ -478,7 +461,8 @@ contract PlasmaCM {
         bytes calldata signature,
         uint256 blockNumber)
     external channelExists(channelId) isFunded(channelId) {
-        checkBetween(exits[channelId][index], txBytes, proof, signature, blockNumber);
+        RootChain.Exit memory exit = exits[channelId][index];
+        exit.checkBetween(rootChain, txBytes, proof, signature, blockNumber);
 
         FMChannel storage channel = channels[channelId];
         channel.state = ChannelState.CHALLENGED;
@@ -487,34 +471,6 @@ contract PlasmaCM {
         delete channels[channelId];
         delete challenges[channelId];
         delete exits[channelId];
-    }
-
-    /**
-     * @dev Checks a transaction to be a previous double spend from an Exit
-     * @param exit        RootChain.Exit exit to be challenged
-     * @param txBytes     RLP encoded bytes of the transaction to make a Challenge Between. Should be a direct spend of
-     *                    the exit.prevBlock. Has to be the same slot, signed by the same owner and the blockNumber
-     *                    Should be before exit.exitBlock.
-     * @param proof       Bytes needed for the proof of inclusion of txBytes in the Plasma block
-     * @param blockNumber BlockNumber of the transaction to be checked for the inclusion proof. Must be between exit.prevBlock
-     *                    and exit.exitBlock.
-     */
-    function checkBetween(
-        RootChain.Exit memory exit,
-        bytes memory txBytes,
-        bytes memory proof,
-        bytes memory signature,
-        uint blockNumber
-    ) private view {
-
-        require(exit.exitBlock > blockNumber && exit.prevBlock < blockNumber,
-            "Tx should be between the exit's blocks"
-        );
-
-        rootChain.checkTX(txBytes, proof, blockNumber);
-        Transaction.TX memory txData = txBytes.getTransaction();
-        require(txData.hash.ecverify(signature, exit.prevOwner), "Invalid signature");
-        require(txData.slot == exit.slot, "Tx is referencing another slot");
     }
 
     /**
@@ -540,7 +496,7 @@ contract PlasmaCM {
     ) external payable channelExists(channelId) isChallengeable(channelId) Bonded {
 
         require(block.timestamp <= channels[channelId].fundedTimestamp + CHALLENGE_PERIOD, "Challenge window is over");
-        checkBefore(exits[channelId][index], txBytes, proof, blockNumber);
+        exits[channelId][index].checkBefore(rootChain, txBytes, proof, blockNumber);
         bytes32 txHash = txBytes.getHash();
         require(!challenges[channelId].contains(txHash), "Transaction used for challenge already");
 
@@ -559,26 +515,6 @@ contract PlasmaCM {
         FMChannel storage channel = channels[channelId];
         channel.state = ChannelState.SUSPENDED;
         emit ChallengeRequest(channelId, index, txHash, channel.players[0], channel.players[1], msg.sender);
-    }
-
-    /**
-     * @dev Checks a transaction against an exit for a Challenge Before
-     * @param exit        RootChain.Exit exit to be challenged
-     * @param txBytes     RLP encoded bytes of the transaction to make a Challenge Before.
-     * @param proof       Bytes needed for the proof of inclusion of txBytes in the Plasma block
-     * @param blockNumber BlockNumber of the transaction to be checked for the inclusion proof. Must be previous to
-     *                    exit.prevBlock.
-     */
-    function checkBefore(
-        RootChain.Exit memory exit,
-        bytes memory txBytes,
-        bytes memory proof,
-        uint blockNumber
-    ) private view {
-        require(blockNumber <= exit.prevBlock, "Tx should be before the exit's parent block");
-        rootChain.checkTX(txBytes, proof, blockNumber);
-        Transaction.TX memory txData = txBytes.getTransaction();
-        require(txData.slot == exit.slot, "Tx is referencing another slot");
     }
 
     /**
@@ -618,8 +554,8 @@ contract PlasmaCM {
         bytes memory _signature = signature;
         RootChain.Exit memory exit = exits[_channelId][_index];
         ChallengeLib.Challenge memory challenge = cChallenges[cIndex];
-        checkResponse(
-            exit,
+        exit.checkResponse(
+            rootChain,
             challenge,
             _blockNumber,
             _respondingTransaction,
@@ -636,34 +572,6 @@ contract PlasmaCM {
         }
 
         emit ChallengeResponded(_channelId, _index, challenge.txHash, channel.players[0], channel.players[1], challenge.challenger);
-    }
-
-   /**
-    * @dev Checks a Plasma Challenge's response against an exit.
-    * @param exit        RootChain.Exit exit to be challenged
-    * @param challenge   ChallengeLib.Challenge challenge to respond to
-    * @param blockNumber BlockNumber of the transaction to be checked for the inclusion proof. Should be a future spend of
-    *                    the challenge.challengingBlockNumber but before the exit.exitBlock. Has to be the same slot,
-    *                    signed by the same owner.
-    * @param txBytes     RLP encoded bytes of the transaction to proof the spending of the challenge. Must
-    * @param proof       Bytes needed for the proof of inclusion of txBytes in the Plasma block
-    * @param signature   Signature of the txBytes to prove its validity. Must be signed by the challenged owner
-    */
-    function checkResponse(
-        RootChain.Exit memory exit,
-        ChallengeLib.Challenge memory challenge,
-        uint256 blockNumber,
-        bytes memory txBytes,
-        bytes memory signature,
-        bytes memory proof
-    ) private view {
-
-        rootChain.checkTX(txBytes, proof, blockNumber);
-        Transaction.TX memory txData = txBytes.getTransaction();
-        require(txData.hash.ecverify(signature, challenge.owner), "Invalid signature");
-        require(txData.slot == exit.slot, "Tx is referencing another slot");
-        require(blockNumber > challenge.challengingBlockNumber, "BlockNumber must be after the chalenge");
-        require(blockNumber <= exit.exitBlock, "Cannot respond with a tx after the exit");
     }
 
     /**
