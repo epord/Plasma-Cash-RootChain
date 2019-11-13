@@ -26,12 +26,12 @@ library BattleDamageCalculator {
 
     uint constant STEEL_SPDEF_INC   = 150;
 
-    uint8 constant BUG_HIT_NOT_MISS      = uint8(uint(50) * 100 * 255 / 100);
-    uint8 constant ELECTRIC_HIT_NOT_MISS = uint8(uint(75) * 100 * 255 / 100);
-    uint8 constant FAIRY_SAME_SEX_HIT_NOT_MISS = uint8(uint(65) * 100 * 255 / 100);
-    uint8 constant FAIRY_DIFF_SEX_HIT_NOT_MISS = uint8(uint(30) * 100 * 255 / 100);
-    uint8 constant PSYCHIC_HIT_NOT_MISS = uint8(uint(85) * 100 * 255 / 100);
-    uint8 constant GHOST_HIT_NOT_MISS   = uint8(uint(70) * 100 * 255 / 100);
+    uint8 constant BUG_HIT_NOT_MISS      = uint8(uint(50) * 100 * 255 / 10000);
+    uint8 constant ELECTRIC_HIT_NOT_MISS = uint8(uint(75) * 100 * 255 / 10000);
+    uint8 constant FAIRY_SAME_SEX_HIT_NOT_MISS = uint8(uint(65) * 100 * 255 / 10000);
+    uint8 constant FAIRY_DIFF_SEX_HIT_NOT_MISS = uint8(uint(30) * 100 * 255 / 10000);
+    uint8 constant PSYCHIC_HIT_NOT_MISS = uint8(uint(85) * 100 * 255 / 10000);
+    uint8 constant GHOST_HIT_NOT_MISS   = uint8(uint(70) * 100 * 255 / 10000);
 
 
     uint8 constant BONUS_EFFECTIVE = 150;

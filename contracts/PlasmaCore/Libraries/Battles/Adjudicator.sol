@@ -33,7 +33,7 @@ library Adjudicators {
     whenState(channel, PlasmaCM.ChannelState.FUNDED)
     matchId(channel, initialState)
     {
-        Rules.validateStartState(initialState, channel.players[0], channel.players[1], channel.initialArgumentsHash);
+        Rules.validateStartState(initialState, channel.players, channel.initialArgumentsHash);
         createChallenge(channel, uint32(now + CHALLENGE_DURATION), initialState, issuer);
     }
 
@@ -61,11 +61,11 @@ library Adjudicators {
     matchId(channel, fromState)
     {
         if(signatures[0].length == 0 ) {
-            Rules.validateStartState(fromState, channel.players[0], channel.players[1], channel.initialArgumentsHash);
-            toState.requireSignature(signatures[1]);
+            Rules.validateStartState(fromState, channel.players, channel.initialArgumentsHash);
+            toState.requireSignature(signatures[1], channel.publicKeys);
             Rules.validateTransition(fromState, toState);
         } else {
-            Rules.validateSignedTransition(fromState, toState, signatures);
+            Rules.validateSignedTransition(fromState, toState, channel.publicKeys, signatures);
         }
         createChallenge(channel, uint32(now + CHALLENGE_DURATION), toState, issuer);
     }
@@ -85,7 +85,7 @@ library Adjudicators {
     withActiveChallenge(channel)
     whenState(channel, PlasmaCM.ChannelState.FUNDED)
     {
-        nextState.requireSignature(signature);
+        nextState.requireSignature(signature, channel.publicKeys);
         Rules.validateTransition(channel.forceMoveChallenge.state, nextState);
         cancelCurrentChallenge(channel);
     }
@@ -113,7 +113,7 @@ library Adjudicators {
     whenState(channel, PlasmaCM.ChannelState.FUNDED)
     {
         //AlternativeState will never be the first state since the hash vaidate in the forceMoveChannel
-        Rules.validateAlternativeRespondWithMove(channel.forceMoveChallenge.state, alternativeState, nextState, signatures);
+        Rules.validateAlternativeRespondWithMove(channel.forceMoveChallenge.state, alternativeState, nextState, channel.publicKeys, signatures);
         cancelCurrentChallenge(channel);
         createChallenge(channel, uint32(now + CHALLENGE_DURATION), nextState, issuer);
     }
@@ -135,7 +135,7 @@ library Adjudicators {
     withActiveChallenge(channel)
     whenState(channel, PlasmaCM.ChannelState.FUNDED)
     {
-        Rules.validateRefute(channel.forceMoveChallenge.state, refutingState, signature);
+        Rules.validateRefute(channel.forceMoveChallenge.state, refutingState, channel.publicKeys, signature);
         cancelCurrentChallenge(channel);
     }
 
@@ -161,7 +161,7 @@ library Adjudicators {
     whenState(channel, PlasmaCM.ChannelState.FUNDED)
     matchId(channel, penultimateState)
     {
-        Rules.validateSignedTransition(penultimateState, ultimateState, signatures);
+        Rules.validateSignedTransition(penultimateState, ultimateState, channel.publicKeys, signatures);
         require(ultimateState.isOver(), "Ultimate State must be a final state");
 
         //Create an expired challenge that acts as the final state

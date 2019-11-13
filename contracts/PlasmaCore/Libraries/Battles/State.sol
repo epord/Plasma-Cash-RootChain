@@ -38,10 +38,11 @@ library State {
     }
 
     //State is signed by mover
-    function requireSignature(StateStruct memory state, bytes memory signature) public pure {
+    function requireSignature(StateStruct memory state, bytes memory signature, address[2] memory publicKeys) public pure {
+        address key = mover(state) == state.participants[0] ? publicKeys[0] : publicKeys[1];
         require(
             keccak256(abi.encodePacked(state.channelId, state.channelType, state.participants, state.turnNum, state.gameAttributes))
-                .ecverify(signature, mover(state)), "mover must have signed state"
+                .ecverify(signature, key), "mover must have signed state"
         );
     }
 }

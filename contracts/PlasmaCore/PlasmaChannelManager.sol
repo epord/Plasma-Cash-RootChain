@@ -43,7 +43,7 @@ contract PlasmaCM {
      * @param initialState The encoded state, determined how to be decoded by the channelType, that will be defined as
                            the starting point of this channel, that both parties agreed on.
      */
-    event ChannelFunded(uint channelId, address indexed creator, address indexed opponent, address channelType, bytes initialState);
+    event ChannelFunded(uint channelId, address indexed creator, address indexed opponent, address[2] publicKeys, address channelType, bytes initialState);
 
     /**
      * Event for channel conclusion
@@ -62,11 +62,10 @@ contract PlasmaCM {
      * @notice This event is generated when ChallengeAfter or ChallengeBetween is called, closing the channel and giving
                the stake to the challenger.
      * @param channelId   Unique identifier of the channel
-     * @param exitIndex   Index corresponding to the exit's index to be challenged
      * @param creator     Creator of the channel, also known as player
      * @param opponent    Opponent of the channel
      */
-    event ChannelChallenged(uint indexed channelId, uint exitIndex, address indexed creator, address indexed opponent);
+    event ChannelChallenged(uint indexed channelId, address indexed creator, address indexed opponent);
 
     /**
      * Event for the creation of a Plasma challenge inside a channel.
@@ -130,6 +129,7 @@ contract PlasmaCM {
         uint fundedTimestamp;
         uint256 stake;
         address[2] players;
+        address[2] publicKeys;
         bytes32 initialArgumentsHash;
         ChannelState state;
         Rules.Challenge forceMoveChallenge;
@@ -175,6 +175,7 @@ contract PlasmaCM {
     function initiateChannel(
         address channelType,
         address opponent,
+        address key,
         uint stake,
         bytes calldata initialGameAttributes,
         bytes calldata exitData
@@ -185,6 +186,9 @@ contract PlasmaCM {
         address[2] memory addresses;
         addresses[0] = msg.sender;
         addresses[1] = opponent;
+
+        address[2] memory publicKeys;
+        publicKeys[0] = key;
 
         RootChain.Exit[] memory exited = PlasmaTurnGame(channelType).validateStartState(
             initialGameAttributes, addresses, 0, exitData);
@@ -199,6 +203,7 @@ contract PlasmaCM {
             0, // to be filled when channel is funded
             stake,
             addresses,
+            publicKeys,
             keccak256(initialGameAttributes),
             ChannelState.INITIATED,
             challenge
@@ -229,6 +234,7 @@ contract PlasmaCM {
       */
     function fundChannel(
         uint channelId,
+        address key,
         bytes calldata initialGameAttributes,
         bytes calldata exitData
     ) external payable channelExists(channelId) {
@@ -240,13 +246,14 @@ contract PlasmaCM {
         require(channel.stake == msg.value, "Payment must be equal to channel stake");
         require(channel.initialArgumentsHash == keccak256(initialGameAttributes), "Initial state does not match");
         channel.state = ChannelState.FUNDED;
+        channel.publicKeys[1] = key;
         channel.fundedTimestamp = block.timestamp;
         RootChain.Exit[] memory exitOpponent = PlasmaTurnGame(channel.channelType)
             .validateStartState(initialGameAttributes, channel.players, 1, exitData);
         for(uint i; i<exitOpponent.length; i++) {
             exits[channel.channelId].push(exitOpponent[i]);
         }
-        emit ChannelFunded(channel.channelId, channel.players[0], channel.players[1], channel.channelType, initialGameAttributes);
+        emit ChannelFunded(channel.channelId, channel.players[0], channel.players[1],  channel.publicKeys, channel.channelType, initialGameAttributes);
         PlasmaTurnGame(channel.channelType).eventStartState(channelId, initialGameAttributes, channel.players[0], channel.players[1]);
     }
 
@@ -266,7 +273,6 @@ contract PlasmaCM {
 
         funds[msg.sender] = funds[msg.sender] + channel.stake;
         emit ChannelConcluded(channelId, channel.players[0], channel.players[1]);
-        delete channels[channelId];
         delete challenges[channelId];
         delete exits[channelId];
     }
@@ -300,7 +306,6 @@ contract PlasmaCM {
         channel.state = ChannelState.CLOSED;
         funds[channel.forceMoveChallenge.winner] += channel.stake * 2;
         emit ChannelConcluded(channelId, channel.players[0], channel.players[1]);
-        delete channels[channelId];
         delete challenges[channelId];
         delete exits[channelId];
     }
@@ -332,6 +337,7 @@ contract PlasmaCM {
     ) public channelExists(channelId) isAllowed(channelId) {
 
         channels[channelId].forceFirstMove(initialState, msg.sender);
+        emit ForceMoveRequested(channelId, initialState);
     }
 
     /**
@@ -429,14 +435,14 @@ contract PlasmaCM {
         FMChannel storage channel = channels[channelId];
         require(createdAt < channel.fundedTimestamp, "Challenge After block must be previous to channel creation");
         channel.state = ChannelState.CHALLENGED;
-        funds[msg.sender] += channel.stake * 2;
+        funds[msg.sender] += channel.stake;
 
         //Stack too deep
         uint _channelId = channelId;
-        uint _index = index;
+        uint notChallenged = exit.owner == channel.players[0] ? 1 : 0;
+        funds[channel.players[notChallenged]] += channel.stake;
 
-        emit ChannelChallenged(_channelId, _index, channel.players[0], channel.players[1]);
-        delete channels[_channelId];
+        emit ChannelChallenged(_channelId, channel.players[0], channel.players[1]);
         delete challenges[_channelId];
         delete exits[_channelId];
     }
@@ -466,9 +472,12 @@ contract PlasmaCM {
 
         FMChannel storage channel = channels[channelId];
         channel.state = ChannelState.CHALLENGED;
-        funds[msg.sender] += channel.stake * 2;
-        emit ChannelChallenged(channelId, index, channel.players[0], channel.players[1]);
-        delete channels[channelId];
+        funds[msg.sender] += channel.stake;
+
+        emit ChannelChallenged(channelId, channel.players[0], channel.players[1]);
+        uint notChallenged = exit.owner == channel.players[0] ? 1 : 0;
+        funds[channel.players[notChallenged]] += channel.stake;
+
         delete challenges[channelId];
         delete exits[channelId];
     }
@@ -613,8 +622,7 @@ contract PlasmaCM {
             funds[channel.players[1]] += channel.stake;
         }
 
-        emit ChannelChallenged(channelId, 0, channel.players[0], channel.players[1]);
-        delete channels[channelId];
+        emit ChannelChallenged(channelId, channel.players[0], channel.players[1]);
         delete challenges[channelId];
         delete exits[channelId];
     }

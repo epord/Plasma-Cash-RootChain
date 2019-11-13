@@ -14,13 +14,12 @@ library Rules {
 
     function validateStartState(
         State.StateStruct memory state,
-        address player,
-        address opponent,
+        address[2] memory players,
         bytes32 initialArgumentsHash
     ) internal pure {
         require(state.turnNum == 0, "First turn must be 0");
-        require(state.participants[0] == player, "State player is incorrect");
-        require(state.participants[1] == opponent, "State opponent is incorrect");
+        require(state.participants[0] == players[0], "State player is incorrect");
+        require(state.participants[1] == players[1], "State opponent is incorrect");
         require(initialArgumentsHash == keccak256(state.gameAttributes), "Initial states does not match");
     }
 
@@ -62,11 +61,12 @@ library Rules {
     function validateSignedTransition(
         State.StateStruct memory fromState,
         State.StateStruct memory toState,
+        address[2] memory publicKeys,
         bytes[] memory signatures
     ) internal view {
         // states must be signed by the appropriate participant
-        fromState.requireSignature(signatures[0]);
-        toState.requireSignature(signatures[1]);
+        fromState.requireSignature(signatures[0], publicKeys);
+        toState.requireSignature(signatures[1], publicKeys);
 
         return validateTransition(fromState, toState);
     }
@@ -74,6 +74,7 @@ library Rules {
     function validateRefute(
         State.StateStruct memory challengeState,
         State.StateStruct memory refutationState,
+        address[2] memory publicKeys,
         bytes memory signature
     ) internal pure {
         require(
@@ -85,16 +86,17 @@ library Rules {
             "refutationState must have same mover as challengeState"
         );
         // ... and be signed (by that mover)
-        refutationState.requireSignature(signature);
+        refutationState.requireSignature(signature, publicKeys);
     }
 
     function validateRespondWithMove(
         State.StateStruct memory challengeState,
         State.StateStruct memory nextState,
+        address[2] memory publicKeys,
         bytes memory signature
     ) internal view {
         // check that the challengee's signature matches
-        nextState.requireSignature(signature);
+        nextState.requireSignature(signature, publicKeys);
         validateTransition(challengeState, nextState);
     }
 
@@ -102,6 +104,7 @@ library Rules {
         State.StateStruct memory challengeState,
         State.StateStruct memory alternativeState,
         State.StateStruct memory nextState,
+        address[2] memory publicKeys,
         bytes[] memory signatures
     ) internal view {
 
@@ -117,11 +120,11 @@ library Rules {
         );
 
         // .. it must be signed (by the challenger)
-        alternativeState.requireSignature(signatures[0]);
+        alternativeState.requireSignature(signatures[0], publicKeys);
 
         // checking the nextState:
         // .. it must be signed (my the challengee)
-        nextState.requireSignature(signatures[1]);
+        nextState.requireSignature(signatures[1], publicKeys);
 
         validateTransition(alternativeState, nextState);
     }
