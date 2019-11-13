@@ -193,7 +193,7 @@ library Adjudicators {
     }
 
     function activeChallengePresent(PlasmaCM.FMChannel storage channel) public view returns (bool) {
-        return (channel.forceMoveChallenge.expirationTime > now);
+        return currentChallengePresent(channel) && (channel.forceMoveChallenge.expirationTime > now);
     }
 
     function expiredChallengePresent(PlasmaCM.FMChannel storage channel) public view returns (bool) {
