@@ -2,7 +2,7 @@
 // Learn more about Loom DappChains at https://loomx.io
 // All derivitive works of this code must incluse this copyright header on every file
 
-pragma solidity ^0.5.2;
+pragma solidity ^0.5.12;
 
 import "openzeppelin-solidity/contracts/ownership/Ownable.sol";
 

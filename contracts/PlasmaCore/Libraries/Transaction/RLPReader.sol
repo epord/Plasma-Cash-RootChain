@@ -47,7 +47,7 @@ library RLPReader {
     * @param item RLP encoded list in bytes
     */
     function toList(RLPItem memory item) internal pure returns (RLPItem[] memory result) {
-        require(isList(item), "RLP Item is not list");
+        require(isList(item));
 
         uint items = numItems(item);
         result = new RLPItem[](items);
