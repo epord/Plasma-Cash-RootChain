@@ -130,6 +130,21 @@ library CMBTransition {
         return result;
     }
 
+
+    function validateTurnTransition(
+        RootChain rootChain, CryptoMons cryptomons,
+        bytes memory oldState, uint turnNum, bytes memory newState
+    ) public view {
+
+        if(turnNum == 0) {
+            validateInitialTransition(oldState, newState);
+        } else if(turnNum%2 == 0) {
+            validateEvenToOdd(rootChain, cryptomons, oldState, newState, isOver(newState));
+        } else {
+            validateOddToEven(rootChain, cryptomons, oldState, newState, turnNum == 1);
+        }
+    }
+
     function validateTransitionKeepBasics(RLPReader.RLPItem[] memory first, RLPReader.RLPItem[] memory second) private pure {
         //Player
         require(first[uint(Battle.CryptoMonPL)].toUint() == second[uint(Battle.CryptoMonPL)].toUint() ,"Player Cryptomon must stay same");

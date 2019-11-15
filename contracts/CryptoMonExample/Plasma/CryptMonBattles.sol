@@ -50,16 +50,10 @@ contract CryptoMonBattles is PlasmaTurnGame, Ownable {
     }
 
     function validateTurnTransition(bytes memory oldState, uint turnNum, bytes memory newState) public view {
-        if(turnNum == 0) {
-            CMBTransition.validateInitialTransition(oldState, newState);
-        } else if(turnNum%2 == 0) {
-            CMBTransition.validateEvenToOdd(rootChain, cryptomons, oldState, newState, isOver(newState, turnNum));
-        } else {
-            CMBTransition.validateOddToEven(rootChain, cryptomons, oldState, newState, turnNum == 1);
-        }
+        CMBTransition.validateTurnTransition(rootChain, cryptomons, oldState, turnNum, newState);
     }
 
-    function winner(bytes memory state, address player, address opponent) public pure returns (address) {
+    function winner(bytes memory state, uint /*turnNum*/, address player, address opponent) public pure returns (address) {
         return CMBTransition.winner(state, player, opponent);
     }
 

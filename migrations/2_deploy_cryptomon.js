@@ -5,6 +5,7 @@ var plasmaCM = artifacts.require("PlasmaCM");
 var adjudicators = artifacts.require("Adjudicators");
 var state = artifacts.require("State");
 var BattleDamageCalculator = artifacts.require("BattleDamageCalculator");
+var CMBTransition = artifacts.require("CMBTransition");
 var CryptoMonBattles = artifacts.require("CryptoMonBattles");
 
 //Cryptomon <- RootChain <- VMC
@@ -20,6 +21,9 @@ module.exports = function(deployer) {
         await deployer.deploy(plasmaCM, RootChain.address);
         await deployer.deploy(BattleDamageCalculator);
         await deployer.link(BattleDamageCalculator, CryptoMonBattles);
+        await deployer.link(BattleDamageCalculator, CMBTransition);
+        await deployer.deploy(CMBTransition);
+        await deployer.link(CMBTransition, CryptoMonBattles);
         await deployer.deploy(CryptoMonBattles, RootChain.address, CryptoMon.address);
       });
     });
