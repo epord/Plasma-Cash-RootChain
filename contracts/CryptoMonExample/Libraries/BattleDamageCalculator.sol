@@ -438,26 +438,6 @@ library BattleDamageCalculator {
         }
     }
 
-    function willHit(state, otherState, random) {
-        if(state.status1 && state.status2) {
-            let odds1 = getMissOdds(otherState.data.type1, state.cryptoMon.gender == otherState.cryptoMon.gender);
-            let odds2 = getMissOdds(otherState.data.type2, state.cryptoMon.gender == otherState.cryptoMon.gender);
-            let odds = 255 - Math.floor(
-            (Math.floor((255-odds1) * decimals/255) * Math.floor((255-odds2) * decimals/255))*255
-            /(decimals*decimals)
-            );
-            return random > odds;
-        } else if(state.status1) {
-            return random > getMissOdds(otherState.data.type1, state.cryptoMon.gender == otherState.cryptoMon.gender);
-        } else if(state.status2) {
-            return random > getMissOdds(otherState.data.type2, state.cryptoMon.gender == otherState.cryptoMon.gender);
-        } else {
-            return true;
-        }
-    }
-
-
-
     function getMissOdds(Pokedex.Type ptype, bool sameSex) private pure returns (uint8) {
         if(ptype == Pokedex.Type.Bug) return BUG_MISS_ODDS;
         if(ptype == Pokedex.Type.Electric) return ELECTRIC_MISS_ODDS;
