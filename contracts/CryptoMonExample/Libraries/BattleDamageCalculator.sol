@@ -26,12 +26,12 @@ library BattleDamageCalculator {
 
     uint constant STEEL_SPDEF_INC   = 150;
 
-    uint8 constant BUG_HIT_NOT_MISS      = uint8(uint(50) * 100 * 255 / 10000);
-    uint8 constant ELECTRIC_HIT_NOT_MISS = uint8(uint(75) * 100 * 255 / 10000);
-    uint8 constant FAIRY_SAME_SEX_HIT_NOT_MISS = uint8(uint(65) * 100 * 255 / 10000);
-    uint8 constant FAIRY_DIFF_SEX_HIT_NOT_MISS = uint8(uint(30) * 100 * 255 / 10000);
-    uint8 constant PSYCHIC_HIT_NOT_MISS = uint8(uint(85) * 100 * 255 / 10000);
-    uint8 constant GHOST_HIT_NOT_MISS   = uint8(uint(70) * 100 * 255 / 10000);
+    uint8 constant BUG_MISS_ODDS      = uint8(uint(50) * 100 * 255 / 10000);
+    uint8 constant ELECTRIC_MISS_ODDS = uint8(uint(25) * 100 * 255 / 10000);
+    uint8 constant FAIRY_SAME_SEX_MISS_ODDS = uint8(uint(35) * 100 * 255 / 10000);
+    uint8 constant FAIRY_DIFF_SEX_MISS_ODDS = uint8(uint(70) * 100 * 255 / 10000);
+    uint8 constant PSYCHIC_MISS_ODDS = uint8(uint(15) * 100 * 255 / 10000);
+    uint8 constant GHOST_MISS_ODDS   = uint8(uint(30) * 100 * 255 / 10000);
 
 
     uint8 constant BONUS_EFFECTIVE = 150;
@@ -224,10 +224,11 @@ library BattleDamageCalculator {
     }
 
     function canStatus(BattleState memory state, uint8 random) private pure returns (bool) {
-        if(state.player.status1) require(state.opponent.data.type1 != Pokedex.Type.Ice, "Cant use Status while Froze");
-        if(state.player.status2) require(state.opponent.data.type2 != Pokedex.Type.Ice, "Cant use Status while Froze");
+        if(state.player.status1 && state.opponent.data.type1 != Pokedex.Type.Ice) return false;
+        if(state.player.status2 && state.opponent.data.type2 != Pokedex.Type.Ice) return false;
         return random < STATUS_HIT_CHANCE;
     }
+
 
     function calculateEffectiveDamage(
         CryptoMonState memory state,
@@ -426,25 +427,45 @@ library BattleDamageCalculator {
         if(state.status1 && state.status2) {
             uint8 odds1 = getMissOdds(otherState.data.type1, state.cryptoMon.gender == otherState.cryptoMon.gender);
             uint8 odds2 = getMissOdds(otherState.data.type2, state.cryptoMon.gender == otherState.cryptoMon.gender);
-            uint8 odds = uint8((uint(odds1) * decimals / 255) *  (uint(odds2) * decimals / 255) * 255 / (decimals * decimals));
-            return random < odds;
+            uint8 odds = 255 - uint8((uint(255-odds1) * decimals / 255) *  (uint(255-odds2) * decimals / 255) * 255 / (decimals * decimals));
+            return random > odds;
         } else if(state.status1) {
-            return random < getMissOdds(otherState.data.type1, state.cryptoMon.gender == otherState.cryptoMon.gender);
+            return random > getMissOdds(otherState.data.type1, state.cryptoMon.gender == otherState.cryptoMon.gender);
         } else if(state.status2) {
-            return random < getMissOdds(otherState.data.type2, state.cryptoMon.gender == otherState.cryptoMon.gender);
+            return random > getMissOdds(otherState.data.type2, state.cryptoMon.gender == otherState.cryptoMon.gender);
         } else {
             return true;
         }
     }
 
+    function willHit(state, otherState, random) {
+        if(state.status1 && state.status2) {
+            let odds1 = getMissOdds(otherState.data.type1, state.cryptoMon.gender == otherState.cryptoMon.gender);
+            let odds2 = getMissOdds(otherState.data.type2, state.cryptoMon.gender == otherState.cryptoMon.gender);
+            let odds = 255 - Math.floor(
+            (Math.floor((255-odds1) * decimals/255) * Math.floor((255-odds2) * decimals/255))*255
+            /(decimals*decimals)
+            );
+            return random > odds;
+        } else if(state.status1) {
+            return random > getMissOdds(otherState.data.type1, state.cryptoMon.gender == otherState.cryptoMon.gender);
+        } else if(state.status2) {
+            return random > getMissOdds(otherState.data.type2, state.cryptoMon.gender == otherState.cryptoMon.gender);
+        } else {
+            return true;
+        }
+    }
+
+
+
     function getMissOdds(Pokedex.Type ptype, bool sameSex) private pure returns (uint8) {
-        if(ptype == Pokedex.Type.Bug) return BUG_HIT_NOT_MISS;
-        if(ptype == Pokedex.Type.Electric) return ELECTRIC_HIT_NOT_MISS;
-        if(ptype == Pokedex.Type.Ghost) return GHOST_HIT_NOT_MISS;
-        if(ptype == Pokedex.Type.Psychic) return PSYCHIC_HIT_NOT_MISS;
+        if(ptype == Pokedex.Type.Bug) return BUG_MISS_ODDS;
+        if(ptype == Pokedex.Type.Electric) return ELECTRIC_MISS_ODDS;
+        if(ptype == Pokedex.Type.Ghost) return GHOST_MISS_ODDS;
+        if(ptype == Pokedex.Type.Psychic) return PSYCHIC_MISS_ODDS;
         if(ptype == Pokedex.Type.Fairy) {
-            if(sameSex) return FAIRY_SAME_SEX_HIT_NOT_MISS;
-            return FAIRY_DIFF_SEX_HIT_NOT_MISS;
+            if(sameSex) return FAIRY_SAME_SEX_MISS_ODDS;
+            return FAIRY_DIFF_SEX_MISS_ODDS;
         }
 
         return 0;
