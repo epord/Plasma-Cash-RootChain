@@ -100,8 +100,7 @@ contract PlasmaCM {
 
     /**
       * Event for the request of Force Move challenge inside a channel.
-      * @notice This event is generated when ForceMove or alternativeRespondWithMove is called, forcing a player
-                to answer or surrender the channel's stake.
+      * @notice This event is generated when ForceMove is called, forcing a player to answer or surrender the channel's stake.
       * @param channelId   Unique identifier of the channel
       * @param state       Game State to be answered to
       */
@@ -109,7 +108,7 @@ contract PlasmaCM {
 
     /**
       * Event for the response of Force Move challenge inside a channel.
-      * @notice This event is generated when respondWithMove or alternativeRespondWithMove is called, notifying the players
+      * @notice This event is generated when respondWithMove is called, notifying the players
                 of the state to continue from the channel
       * @param channelId   Unique identifier of the channel
       * @param nextState   Game State answer, to be used to continue the channel
@@ -273,8 +272,6 @@ contract PlasmaCM {
 
         funds[msg.sender] = funds[msg.sender] + channel.stake;
         emit ChannelConcluded(channelId, channel.players[0], channel.players[1]);
-        delete challenges[channelId];
-        delete exits[channelId];
     }
 
     /**
@@ -306,8 +303,6 @@ contract PlasmaCM {
         channel.state = ChannelState.CLOSED;
         funds[channel.forceMoveChallenge.winner] += channel.stake * 2;
         emit ChannelConcluded(channelId, channel.players[0], channel.players[1]);
-        delete challenges[channelId];
-        delete exits[channelId];
     }
 
     /**
@@ -334,7 +329,7 @@ contract PlasmaCM {
     function forceFirstMove(
         uint channelId,
         State.StateStruct memory initialState
-    ) public channelExists(channelId) isAllowed(channelId) {
+    ) public channelExists(channelId) isAllowed(initialState, channelId) {
 
         channels[channelId].forceFirstMove(initialState, msg.sender);
         emit ForceMoveRequested(channelId, initialState);
@@ -356,7 +351,7 @@ contract PlasmaCM {
         State.StateStruct memory fromState,
         State.StateStruct memory toState,
         bytes[] memory signatures
-    ) public channelExists(channelId) isAllowed(channelId) {
+    ) public channelExists(channelId) isAllowed(toState, channelId) {
 
         channels[channelId].forceMove(fromState, toState, msg.sender, signatures);
         emit ForceMoveRequested(channelId, toState);
@@ -374,34 +369,35 @@ contract PlasmaCM {
         uint channelId,
         State.StateStruct memory nextState,
         bytes memory signature
-    ) public channelExists(channelId) {
+    ) public channelExists(channelId) isAllowed(nextState, channelId) {
 
         channels[channelId].respondWithMove(nextState, signature);
         emit ForceMoveResponded(channelId, nextState, signature);
     }
 
-    /**
-     * @dev Allows the response of an active forceMove Challenge by canceling with a different state signed by the
-     *      challenge's issuer. Then proceeds to create a challenge for the alternativeState.
-     * @notice Changes the channel's forceMoveChallenge if there is any.
-     * @notice Emits ForceMoveResponded event
-     * @notice Emits ForceMoveRequested event
-     * @param channelId  Unique identifier of the channel
-     * @param alternativeState  The state replacing the challenge's state. Must have the same turnNum as it,
-     *                          and thus, be signed by the same person.
-     * @param nextState         The next state of the channel. Must be a valid transition from the alternativeState.
-     * @param signatures        The signatures (array of size 2) corresponding to alternativeState and nextState in that order
-     */
-    function alternativeRespondWithMove(
+  /**
+    * @dev Allows the closure of a challenge by providing a refuting state.
+    * @notice Removes the channel's forceMoveChallenge if there is any.
+    * @notice Sets channel's state to CLOSED. Stakes are added to the winner.
+    * @notice Emits ChannelConcluded event
+    * @param channelId      Unique identifier of the channel
+    * @param refutingState  The state refuting the challenge's state.
+    * @param signature      The signature corresponding to refutingState
+    */
+    function refute(
         uint channelId,
-        State.StateStruct memory alternativeState,
-        State.StateStruct memory nextState,
-        bytes[] memory signatures
-    ) public channelExists(channelId) isAllowed(channelId) {
+        State.StateStruct memory refutingState,
+        bytes memory signature
+    ) public channelExists(channelId) {
+        FMChannel storage channel = channels[channelId];
+        channel.refute(refutingState, signature, msg.sender);
 
-        channels[channelId].alternativeRespondWithMove(alternativeState, nextState, msg.sender, signatures);
-        emit ForceMoveResponded(channelId, nextState, signatures[1]);
-        emit ForceMoveRequested(channelId, nextState);
+        //should never fail
+        require(channel.expiredChallengePresent(), "Winner not correctly decided");
+
+        channel.state = ChannelState.CLOSED;
+        funds[channel.forceMoveChallenge.winner] += channel.stake * 2;
+        emit ChannelConcluded(channelId, channel.players[0], channel.players[1]);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////
@@ -443,8 +439,6 @@ contract PlasmaCM {
         funds[channel.players[notChallenged]] += channel.stake;
 
         emit ChannelChallenged(_channelId, channel.players[0], channel.players[1]);
-        delete challenges[_channelId];
-        delete exits[_channelId];
     }
 
     /**
@@ -477,9 +471,6 @@ contract PlasmaCM {
         emit ChannelChallenged(channelId, channel.players[0], channel.players[1]);
         uint notChallenged = exit.owner == channel.players[0] ? 1 : 0;
         funds[channel.players[notChallenged]] += channel.stake;
-
-        delete challenges[channelId];
-        delete exits[channelId];
     }
 
     /**
@@ -623,8 +614,6 @@ contract PlasmaCM {
         }
 
         emit ChannelChallenged(channelId, channel.players[0], channel.players[1]);
-        delete challenges[channelId];
-        delete exits[channelId];
     }
 
     ///////////////////////////////////////////////////////////////////////////////////
@@ -685,11 +674,12 @@ contract PlasmaCM {
         _;
     }
 
-    modifier isAllowed(uint channelId) {
+    modifier isAllowed(State.StateStruct memory state, uint channelId) {
         require(
             channels[channelId].players[0] == msg.sender || channels[channelId].players[1] == msg.sender,
                 "The sender is not involved in the channel"
         );
+        require(state.mover() == msg.sender, "Only the mover can interact with the challenge");
         _;
     }
 

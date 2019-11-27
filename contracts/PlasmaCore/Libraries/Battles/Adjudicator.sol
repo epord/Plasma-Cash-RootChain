@@ -91,34 +91,6 @@ library Adjudicators {
     }
 
     /**
-     * @dev Allows the response of an active forceMove Challenge by canceling with a different state signed by the
-            challenge's issuer. Then proceeds to create a challenge for the alternativeState.
-     * @notice Changes the channel's forceMoveChallenge if there is any.
-     * @param channel           The FMChannel to force a move in
-     * @param alternativeState  The state replacing the challenge's state. Must have the same turnNum as it,
-                                and thus, be signed by the same person.
-     * @param nextState         The next state of the channel. Must be a valid transition from the alternativeState.
-     * @param issuer            The address of the forceMove challenge responder
-     * @param signatures        The signatures (array of size 2) corresponding to alternativeState and nextState in that order
-     */
-    function alternativeRespondWithMove(
-        PlasmaCM.FMChannel storage channel,
-        State.StateStruct memory alternativeState,
-        State.StateStruct memory nextState,
-        address issuer,
-        bytes[] memory signatures
-    )
-    public
-    withActiveChallenge(channel)
-    whenState(channel, PlasmaCM.ChannelState.FUNDED)
-    {
-        //AlternativeState will never be the first state since the hash vaidate in the forceMoveChannel
-        Rules.validateAlternativeRespondWithMove(channel.forceMoveChallenge.state, alternativeState, nextState, channel.publicKeys, signatures);
-        cancelCurrentChallenge(channel);
-        createChallenge(channel, uint32(now + CHALLENGE_DURATION), nextState, issuer);
-    }
-
-    /**
      * @dev Allows the response of an active forceMove Challenge by refuting the challenge providing a newer state signed
             by the challenger.
      * @notice Removes the channel's forceMoveChallenge if there is any.
@@ -129,14 +101,19 @@ library Adjudicators {
     function refute(
         PlasmaCM.FMChannel storage channel,
         State.StateStruct memory refutingState,
-        bytes memory signature
+        bytes memory signature,
+        address issuer
     )
     public
     withActiveChallenge(channel)
     whenState(channel, PlasmaCM.ChannelState.FUNDED)
     {
+        address responder = channel.forceMoveChallenge.state.mover() == channel.players[0] ? channel.players[1] : channel.players[0];
+        require(issuer == responder, "Only challenge responder can refute");
+
         Rules.validateRefute(channel.forceMoveChallenge.state, refutingState, channel.publicKeys, signature);
-        cancelCurrentChallenge(channel);
+        //Create an expired challenge that acts as the final state
+        createChallenge(channel, uint32(now), refutingState, issuer);
     }
 
     /**

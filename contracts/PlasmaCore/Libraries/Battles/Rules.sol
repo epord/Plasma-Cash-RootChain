@@ -78,7 +78,25 @@ library Rules {
         bytes memory signature
     ) internal pure {
         require(
-            refutationState.turnNum > challengeState.turnNum,
+            challengeState.channelId == refutationState.channelId,
+            "Invalid transition: channelId must match on challengeState"
+        );
+
+        require(
+            challengeState.channelType == refutationState.channelType,
+            "ChannelType must remain the same"
+        );
+
+        require(
+            challengeState.participants[0] == refutationState.participants[0]
+            && challengeState.participants[1] == refutationState.participants[1],
+            "Players must remain the same"
+        );
+
+        require(
+            refutationState.turnNum > challengeState.turnNum || (
+            refutationState.turnNum == challengeState.turnNum &&
+                keccak256(refutationState.gameAttributes) != keccak256(challengeState.gameAttributes)),
             "the refutationState must have a higher nonce"
         );
         require(
@@ -98,34 +116,5 @@ library Rules {
         // check that the challengee's signature matches
         nextState.requireSignature(signature, publicKeys);
         validateTransition(challengeState, nextState);
-    }
-
-    function validateAlternativeRespondWithMove(
-        State.StateStruct memory challengeState,
-        State.StateStruct memory alternativeState,
-        State.StateStruct memory nextState,
-        address[2] memory publicKeys,
-        bytes[] memory signatures
-    ) internal view {
-
-        // checking the alternative state:
-        require(
-            challengeState.channelId == alternativeState.channelId,
-            "alternativeState must have the right channel"
-        );
-
-        require(
-            challengeState.turnNum == alternativeState.turnNum,
-            "alternativeState must have the same nonce as the challenge state"
-        );
-
-        // .. it must be signed (by the challenger)
-        alternativeState.requireSignature(signatures[0], publicKeys);
-
-        // checking the nextState:
-        // .. it must be signed (my the challengee)
-        nextState.requireSignature(signatures[1], publicKeys);
-
-        validateTransition(alternativeState, nextState);
     }
 }

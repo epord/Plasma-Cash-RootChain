@@ -308,7 +308,7 @@ contract RootChain is IERC721Receiver {
         currentBlock = currentBlock.add(1);
 
         //Slot is created uniquely for any deposit. If the same coin is deposited again after exited, it will have a new slot.
-        uint64 slot = uint64(bytes8(keccak256(abi.encodePacked(numCoins, msg.sender, from))));
+        uint64 slot = uint64(bytes8(keccak256(abi.encodePacked(numCoins, msg.sender, block.timestamp))));
 
         // Update state. Leave `exit` empty
         Coin storage coin = coins[slot];
