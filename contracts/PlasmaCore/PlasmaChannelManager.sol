@@ -329,8 +329,9 @@ contract PlasmaCM {
     function forceFirstMove(
         uint channelId,
         State.StateStruct memory initialState
-    ) public channelExists(channelId) isAllowed(initialState, channelId) {
+    ) public channelExists(channelId) {
 
+        require(msg.sender == channels[channelId].players[0],"Only player can make this challenge");
         channels[channelId].forceFirstMove(initialState, msg.sender);
         emit ForceMoveRequested(channelId, initialState);
     }
@@ -351,8 +352,8 @@ contract PlasmaCM {
         State.StateStruct memory fromState,
         State.StateStruct memory toState,
         bytes[] memory signatures
-    ) public channelExists(channelId) isAllowed(toState, channelId) {
-
+    ) public channelExists(channelId) {
+        require(msg.sender == toState.mover(),"Only non-mover can make this challenge");
         channels[channelId].forceMove(fromState, toState, msg.sender, signatures);
         emit ForceMoveRequested(channelId, toState);
     }
@@ -369,8 +370,8 @@ contract PlasmaCM {
         uint channelId,
         State.StateStruct memory nextState,
         bytes memory signature
-    ) public channelExists(channelId) isAllowed(nextState, channelId) {
-
+    ) public channelExists(channelId) {
+        require(msg.sender == nextState.mover(),"Only mover can answer this challenge");
         channels[channelId].respondWithMove(nextState, signature);
         emit ForceMoveResponded(channelId, nextState, signature);
     }
@@ -390,6 +391,8 @@ contract PlasmaCM {
         bytes memory signature
     ) public channelExists(channelId) {
         FMChannel storage channel = channels[channelId];
+        address responder = channel.forceMoveChallenge.state.mover() == channel.players[0] ? channel.players[1] : channel.players[0];
+        require(msg.sender == responder, "Only challenge responder can refute");
         channel.refute(refutingState, signature, msg.sender);
 
         //should never fail
@@ -671,15 +674,6 @@ contract PlasmaCM {
     modifier isChallengeable(uint channelId) {
         require(channels[channelId].state  == ChannelState.SUSPENDED
         || channels[channelId].state  == ChannelState.FUNDED, "Channel must be funded or suspended");
-        _;
-    }
-
-    modifier isAllowed(State.StateStruct memory state, uint channelId) {
-        require(
-            channels[channelId].players[0] == msg.sender || channels[channelId].players[1] == msg.sender,
-                "The sender is not involved in the channel"
-        );
-        require(state.mover() == msg.sender, "Only the mover can interact with the challenge");
         _;
     }
 

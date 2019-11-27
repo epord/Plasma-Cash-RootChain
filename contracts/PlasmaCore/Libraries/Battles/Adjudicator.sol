@@ -108,9 +108,6 @@ library Adjudicators {
     withActiveChallenge(channel)
     whenState(channel, PlasmaCM.ChannelState.FUNDED)
     {
-        address responder = channel.forceMoveChallenge.state.mover() == channel.players[0] ? channel.players[1] : channel.players[0];
-        require(issuer == responder, "Only challenge responder can refute");
-
         Rules.validateRefute(channel.forceMoveChallenge.state, refutingState, channel.publicKeys, signature);
         //Create an expired challenge that acts as the final state
         createChallenge(channel, uint32(now), refutingState, issuer);
