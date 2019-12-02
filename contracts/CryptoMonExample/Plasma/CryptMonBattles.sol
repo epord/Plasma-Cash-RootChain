@@ -88,7 +88,7 @@ contract CryptoMonBattles is PlasmaTurnGame, Ownable {
     }
 
     modifier isApproved(address _address) {
-        require(validators[_address], "Events can only be triggered by validators");
+        require(validators[_address]);
         _;
     }
 

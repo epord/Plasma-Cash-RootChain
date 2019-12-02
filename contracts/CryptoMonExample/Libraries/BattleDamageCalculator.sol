@@ -123,22 +123,22 @@ library BattleDamageCalculator {
         if(state.player.move == Moves.PROTECT) return state;
 
         if(needsCharge(state.player.move)) {
-            require(state.player.charges > 0, "Player needs a charge to do this move");
+            require(state.player.charges > 0);
             state.player.charges = state.player.charges - 1;
         }
 
         if(state.player.move == Moves.RECHARGE) {
-            require(state.player.charges < 3, "Player recharge not possible when over 3");
+            require(state.player.charges < 3);
             state.player.charges = state.player.charges + 1;
             return state;
         }
 
         if(usesFirstType(state.player.move)) {
-            require(state.player.data.type1 != Pokedex.Type.Unknown, "Player attack cant be done with Unknown type");
+            require(state.player.data.type1 != Pokedex.Type.Unknown);
         }
 
         if(usesSecondType(state.player.move)) {
-            require(state.player.data.type2 != Pokedex.Type.Unknown, "Player attack cant be done with Unknown type");
+            require(state.player.data.type2 != Pokedex.Type.Unknown);
         }
 
         if(isAttacking(state.player.move)) {

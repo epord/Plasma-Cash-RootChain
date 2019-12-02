@@ -14,7 +14,7 @@ library ECVerify {
         // 65 bytes or 0x0... EIP712
         // 0x1... GETH
         // 0x2... TREZOR
-        require(signature.length == 65 || signature.length == 66, "Signature lenght is invalid");
+        require(signature.length == 65 || signature.length == 66);
         SignatureMode mode;
 
         bytes32 hash = h;
@@ -23,22 +23,12 @@ library ECVerify {
         bytes32 s;
 
         uint8 offset = 1;
-        if(signature.length == 65) {
-            offset = 0;
-            mode = SignatureMode.EIP712;
-        } else {
-            mode = SignatureMode(uint8(signature[0]));
-        }
+        offset = 0;
+        mode = SignatureMode.EIP712;
         assembly {
             r := mload(add(signature, add(32,offset)))
             s := mload(add(signature, add(64,offset)))
             v := and(mload(add(signature, add(65, offset))), 255)
-        }
-
-        if (mode == SignatureMode.GETH) {
-            hash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", hash));
-        } else if (mode == SignatureMode.TREZOR) {
-            hash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n\x20", hash));
         }
 
         return ecrecover(

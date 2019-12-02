@@ -27,7 +27,7 @@ contract SparseMerkleTree {
 
     // first 64 bits of the proof are the 0/1 bits
     function getRoot(bytes32 leaf, uint64 index, bytes memory proof) public view returns (bytes32) {
-        require((proof.length - 8) % 32 == 0 && proof.length <= 2056, "Proof length is invalid");
+        require((proof.length - 8) % 32 == 0 && proof.length <= 2056);
         bytes32 proofElement;
         bytes32 computedHash = leaf;
         uint16 p = 8;

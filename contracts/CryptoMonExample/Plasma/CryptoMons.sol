@@ -18,12 +18,12 @@ contract CryptoMons is ERC721, Ownable, Pokedex {
     Counters.Counter tokenCount;
 
     modifier CMPayment() {
-        require(msg.value == CRYPTOMON_VALUE, "Payment must be CryptoMon value");
+        require(msg.value == CRYPTOMON_VALUE);
         _;
     }
 
     modifier isERC721Receiver(address to) {
-        // require(_checkOnERC721Received(address(0), to, 0, ""), "Plasma must be an ERC721Receiver implementer");
+        // require(_checkOnERC721Received(address(0), to, 0, ""));
         _;
     }
 

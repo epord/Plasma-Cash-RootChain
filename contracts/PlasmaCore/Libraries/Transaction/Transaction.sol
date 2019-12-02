@@ -38,12 +38,8 @@ library Transaction {
         return rlpTx.length == 3;
     }
 
-    function isAtomicSwap(RLPReader.RLPItem[] memory rlpTx) internal pure returns (bool) {
-        return rlpTx.length == 9;
-    }
-
     function getBasicTx(RLPReader.RLPItem[] memory rlpTx, bytes memory txBytes) internal pure returns (TX memory) {
-        require(isBasicTransaction(rlpTx), "Transaction bytes do not correspond to basic transaction");
+        require(isBasicTransaction(rlpTx));
 
         TX memory transaction;
 
@@ -59,7 +55,6 @@ library Transaction {
     }
 
     function getAtomicSwapTxs(RLPReader.RLPItem[] memory rlpTx) internal pure returns (AtomicSwapTX[] memory) {
-        require(isAtomicSwap(rlpTx), "Transaction bytes do not correspond to an atomic swap transaction");
         AtomicSwapTX[] memory transactions = new AtomicSwapTX[](2);
 
         transactions[0].slot            = uint64(rlpTx[0].toUint());
@@ -100,26 +95,24 @@ library Transaction {
         return transaction;
     }
 
-    function getHash(bytes memory txBytes) internal pure returns (bytes32 hash) {
+    function getHash(bytes memory txBytes) internal pure returns (bytes32) {
         RLPReader.RLPItem[] memory rlpTx = txBytes.toRlpItem().toList();
         uint64 slot = uint64(rlpTx[0].toUint());
         uint256 prevBlock = uint256(rlpTx[1].toUint());
 
         if (prevBlock == 0) { // deposit transaction
-            hash = keccak256(abi.encodePacked(slot));
+            return keccak256(abi.encodePacked(slot));
         } else {
-            hash = keccak256(txBytes);
+            return keccak256(txBytes);
         }
     }
 
-    function getOwner(bytes memory txBytes) internal pure returns (address owner) {
+    function getOwner(bytes memory txBytes) internal pure returns (address) {
         RLPReader.RLPItem[] memory rlpTx = txBytes.toRlpItem().toList();
         if(isBasicTransaction(rlpTx)) {
-            owner = rlpTx[2].toAddress();
-        } else if(isAtomicSwap(rlpTx)) {
-            owner = rlpTx[3].toAddress();
+            return rlpTx[2].toAddress();
         } else {
-            revert("Could not determine transaction type to retrieve the owner");
+            return rlpTx[3].toAddress();
         }
     }
 
@@ -127,11 +120,9 @@ library Transaction {
         RLPReader.RLPItem[] memory rlpTx = toRLPItems(txBytes);
         if(isBasicTransaction(rlpTx)) {
             return getBasicTx(rlpTx, txBytes);
-        } else if(isAtomicSwap(rlpTx)) {
+        } else {
             Transaction.AtomicSwapTX[] memory txsData = getAtomicSwapTxs(rlpTx);
             return toBasicTx(txsData[0]);
-        } else {
-            revert("Invalid RLP Transaction");
         }
     }
 }

@@ -31,12 +31,12 @@ library PlasmaChallenges {
         uint blockNumber
     ) internal view {
 
-        require(exit.exitBlock < blockNumber, "Tx should be after the exitBlock");
+        require(exit.exitBlock < blockNumber);
         rootChain.checkTX(txBytes, proof, blockNumber);
         Transaction.TX memory txData = txBytes.getTransaction();
-        require(txData.hash.ecverify(signature, exit.owner), "Invalid signature");
-        require(txData.slot == exit.slot, "Tx is referencing another slot");
-        require(txData.prevBlock == exit.exitBlock, "Not a direct spend");
+        require(txData.hash.ecverify(signature, exit.owner));
+        require(txData.slot == exit.slot);
+        require(txData.prevBlock == exit.exitBlock);
     }
 
 
@@ -59,14 +59,12 @@ library PlasmaChallenges {
         uint blockNumber
     ) internal view {
 
-        require(exit.exitBlock > blockNumber && exit.prevBlock < blockNumber,
-            "Tx should be between the exit's blocks"
-        );
+        require(exit.exitBlock > blockNumber && exit.prevBlock < blockNumber);
 
         rootChain.checkTX(txBytes, proof, blockNumber);
         Transaction.TX memory txData = txBytes.getTransaction();
-        require(txData.hash.ecverify(signature, exit.prevOwner), "Invalid signature");
-        require(txData.slot == exit.slot, "Tx is referencing another slot");
+        require(txData.hash.ecverify(signature, exit.prevOwner));
+        require(txData.slot == exit.slot);
     }
 
     /**
@@ -84,10 +82,10 @@ library PlasmaChallenges {
         bytes memory proof,
         uint blockNumber
     ) internal view {
-        require(blockNumber <= exit.prevBlock, "Tx should be before the exit's parent block");
+        require(blockNumber <= exit.prevBlock);
         rootChain.checkTX(txBytes, proof, blockNumber);
         Transaction.TX memory txData = txBytes.getTransaction();
-        require(txData.slot == exit.slot, "Tx is referencing another slot");
+        require(txData.slot == exit.slot);
     }
 
     /**
@@ -113,10 +111,10 @@ library PlasmaChallenges {
 
         rootChain.checkTX(txBytes, proof, blockNumber);
         Transaction.TX memory txData = txBytes.getTransaction();
-        require(txData.hash.ecverify(signature, challenge.owner), "Invalid signature");
-        require(txData.slot == exit.slot, "Tx is referencing another slot");
-        require(blockNumber > challenge.challengingBlockNumber, "BlockNumber must be after the chalenge");
-        require(blockNumber <= exit.exitBlock, "Cannot respond with a tx after the exit");
+        require(txData.hash.ecverify(signature, challenge.owner));
+        require(txData.slot == exit.slot);
+        require(blockNumber > challenge.challengingBlockNumber);
+        require(blockNumber <= exit.exitBlock);
     }
 
 

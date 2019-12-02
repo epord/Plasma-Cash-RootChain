@@ -17,10 +17,10 @@ library Rules {
         address[2] memory players,
         bytes32 initialArgumentsHash
     ) internal pure {
-        require(state.turnNum == 0, "First turn must be 0");
-        require(state.participants[0] == players[0], "State player is incorrect");
-        require(state.participants[1] == players[1], "State opponent is incorrect");
-        require(initialArgumentsHash == keccak256(state.gameAttributes), "Initial states does not match");
+        require(state.turnNum == 0);
+        require(state.participants[0] == players[0]);
+        require(state.participants[1] == players[1]);
+        require(initialArgumentsHash == keccak256(state.gameAttributes));
     }
 
     function validateTransition(
@@ -28,23 +28,19 @@ library Rules {
         State.StateStruct memory toState
     ) internal view {
         require(
-            toState.channelId == fromState.channelId,
-            "Invalid transition: channelId must match on toState"
+            toState.channelId == fromState.channelId
         );
         require(
-            toState.turnNum == fromState.turnNum + 1,
-            "Invalid transition: turnNum must increase by 1"
+            toState.turnNum == fromState.turnNum + 1
         );
 
         require(
-            toState.channelType == fromState.channelType,
-            "ChannelType must remain the same"
+            toState.channelType == fromState.channelType
         );
 
         require(
             toState.participants[0] == fromState.participants[0]
-            && toState.participants[1] == fromState.participants[1],
-            "Players must remain the same"
+            && toState.participants[1] == fromState.participants[1]
         );
 
         fromState.validateGameTransition(toState);
@@ -77,44 +73,6 @@ library Rules {
         address[2] memory publicKeys,
         bytes memory signature
     ) internal pure {
-        require(
-            challengeState.channelId == refutationState.channelId,
-            "Invalid transition: channelId must match on challengeState"
-        );
 
-        require(
-            challengeState.channelType == refutationState.channelType,
-            "ChannelType must remain the same"
-        );
-
-        require(
-            challengeState.participants[0] == refutationState.participants[0]
-            && challengeState.participants[1] == refutationState.participants[1],
-            "Players must remain the same"
-        );
-
-        require(
-            refutationState.turnNum > challengeState.turnNum || (
-            refutationState.turnNum == challengeState.turnNum &&
-                keccak256(refutationState.gameAttributes) != keccak256(challengeState.gameAttributes)),
-            "the refutationState must have a higher nonce"
-        );
-        require(
-            refutationState.mover() == challengeState.mover(),
-            "refutationState must have same mover as challengeState"
-        );
-        // ... and be signed (by that mover)
-        refutationState.requireSignature(signature, publicKeys);
-    }
-
-    function validateRespondWithMove(
-        State.StateStruct memory challengeState,
-        State.StateStruct memory nextState,
-        address[2] memory publicKeys,
-        bytes memory signature
-    ) internal view {
-        // check that the challengee's signature matches
-        nextState.requireSignature(signature, publicKeys);
-        validateTransition(challengeState, nextState);
     }
 }

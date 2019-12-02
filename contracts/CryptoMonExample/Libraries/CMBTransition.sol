@@ -55,23 +55,23 @@ library CMBTransition {
     ) internal view returns (RootChain.Exit[] memory) {
 
         RLPReader.RLPItem[] memory start = state.toRlpItem().toList();
-        require(start.length == uint(Battle.ChargeOP) + 1, "Invalid RLP start length");
+        require(start.length == uint(Battle.ChargeOP) + 1);
 
         //Player
         Pokedex.Pokemon memory cryptoMonPL = getCryptoMon(rootChain, cryptomons, start[uint(Battle.CryptoMonPL)].toUint());
-        require(cryptoMonPL.id > 0                                        , "Invalid Player Cryptomon");
-        require(start[uint(Battle.HPPL)].toUint() == cryptoMonPL.stats.hp , "Player HP does not match");
-        require(start[uint(Battle.Status1PL)].toBoolean() == false        , "Player Status1 should be false");
-        require(start[uint(Battle.Status2PL)].toBoolean() == false        , "Player Status2 should be false");
-        require(start[uint(Battle.ChargePL)].toUint() == INITIAL_CHARGES  , "Player charges must be initial");
+        require(cryptoMonPL.id > 0                                        );
+        require(start[uint(Battle.HPPL)].toUint() == cryptoMonPL.stats.hp );
+        require(start[uint(Battle.Status1PL)].toBoolean() == false        );
+        require(start[uint(Battle.Status2PL)].toBoolean() == false        );
+        require(start[uint(Battle.ChargePL)].toUint() == INITIAL_CHARGES  );
 
         //Opponent
         Pokedex.Pokemon memory cryptoMonOP = getCryptoMon(rootChain, cryptomons, start[uint(Battle.CryptoMonOP)].toUint());
-        require(cryptoMonOP.id > 0                                        , "Invalid Player Cryptomon");
-        require(start[uint(Battle.HPOP)].toUint() == cryptoMonOP.stats.hp , "Opponent HP does not match");
-        require(start[uint(Battle.Status1OP)].toBoolean() == false        , "Opponent Status1 should be false");
-        require(start[uint(Battle.Status2OP)].toBoolean() == false        , "Opponent Status2 should be false");
-        require(start[uint(Battle.ChargeOP)].toUint() == INITIAL_CHARGES  , "Opponent charges must be initial");
+        require(cryptoMonOP.id > 0                                        );
+        require(start[uint(Battle.HPOP)].toUint() == cryptoMonOP.stats.hp );
+        require(start[uint(Battle.Status1OP)].toBoolean() == false        );
+        require(start[uint(Battle.Status2OP)].toBoolean() == false        );
+        require(start[uint(Battle.ChargeOP)].toUint() == INITIAL_CHARGES  );
 
         RLPReader.RLPItem[] memory rlpExit = exitData.toRlpItem().toList();
 
@@ -88,7 +88,7 @@ library CMBTransition {
         RootChain.Exit memory exit;
         if (rlpExit.length == 1) {
             (,uint256 depositBlock, address owner, , ) = rootChain.getPlasmaCoin(token);
-            require(owner == supposedOwner, "Sender does not match deposit owner");
+            require(owner == supposedOwner);
             exit = RootChain.Exit({
                 slot: token,
                 prevOwner: address(0),
@@ -102,7 +102,7 @@ library CMBTransition {
             blocks[0] = rlpExit[uint(RLPExitData.PrevBlockNumber)].toUint();
             blocks[1] = rlpExit[uint(RLPExitData.BlockNumber)].toUint();
 
-            require(rlpExit.length == uint(RLPExitData.Signature) + 1, "Invalid exitData RLP Length");
+            require(rlpExit.length == uint(RLPExitData.Signature) + 1);
             require(supposedOwner == rlpExit[uint(RLPExitData.ExitingTxBytes)].toBytes().getOwner(),
                 "Player does not match exitingTxBytes owner");
 
@@ -147,27 +147,27 @@ library CMBTransition {
 
     function validateTransitionKeepBasics(RLPReader.RLPItem[] memory first, RLPReader.RLPItem[] memory second) private pure {
         //Player
-        require(first[uint(Battle.CryptoMonPL)].toUint() == second[uint(Battle.CryptoMonPL)].toUint() ,"Player Cryptomon must stay same");
-        require(first[uint(Battle.HPPL)].toUint()        == second[uint(Battle.HPPL)].toUint()        ,"Player HP must stay same");
-        require(first[uint(Battle.Status1PL)].toBoolean()== second[uint(Battle.Status1PL)].toBoolean(),"Player Status1 must stay same");
-        require(first[uint(Battle.Status2PL)].toBoolean()== second[uint(Battle.Status2PL)].toBoolean(),"Player Status2 must stay same");
-        require(first[uint(Battle.ChargePL)].toUint()    == second[uint(Battle.ChargePL)].toUint()    ,"Player charges must stay same");
+        require(first[uint(Battle.CryptoMonPL)].toUint() == second[uint(Battle.CryptoMonPL)].toUint() );
+        require(first[uint(Battle.HPPL)].toUint()        == second[uint(Battle.HPPL)].toUint()        );
+        require(first[uint(Battle.Status1PL)].toBoolean()== second[uint(Battle.Status1PL)].toBoolean());
+        require(first[uint(Battle.Status2PL)].toBoolean()== second[uint(Battle.Status2PL)].toBoolean());
+        require(first[uint(Battle.ChargePL)].toUint()    == second[uint(Battle.ChargePL)].toUint()    );
         //Opponent
-        require(first[uint(Battle.CryptoMonOP)].toUint() == second[uint(Battle.CryptoMonOP)].toUint() ,"Opponent Cryptomon must stay same");
-        require(first[uint(Battle.HPOP)].toUint()        == second[uint(Battle.HPOP)].toUint()        ,"Opponent HP must stay same");
-        require(first[uint(Battle.Status1OP)].toBoolean()== second[uint(Battle.Status1OP)].toBoolean(),"Opponent Status1 must stay same");
-        require(first[uint(Battle.Status2OP)].toBoolean()== second[uint(Battle.Status2OP)].toBoolean(),"Opponent Status2 must stay same");
-        require(first[uint(Battle.ChargeOP)].toUint()    == second[uint(Battle.ChargeOP)].toUint()    ,"Opponent charges must stay same");
+        require(first[uint(Battle.CryptoMonOP)].toUint() == second[uint(Battle.CryptoMonOP)].toUint() );
+        require(first[uint(Battle.HPOP)].toUint()        == second[uint(Battle.HPOP)].toUint()        );
+        require(first[uint(Battle.Status1OP)].toBoolean()== second[uint(Battle.Status1OP)].toBoolean());
+        require(first[uint(Battle.Status2OP)].toBoolean()== second[uint(Battle.Status2OP)].toBoolean());
+        require(first[uint(Battle.ChargeOP)].toUint()    == second[uint(Battle.ChargeOP)].toUint()    );
     }
 
     function validateInitialTransition(bytes memory startState, bytes memory firstTurn) public pure {
         RLPReader.RLPItem[] memory start = startState.toRlpItem().toList();
         RLPReader.RLPItem[] memory first = firstTurn.toRlpItem().toList();
 
-        require(start.length == uint(Battle.ChargeOP) + 1    , "Invalid start turn RLP length");
-        require(first.length == uint(Battle.HashDecision) + 1, "Invalid first turn RLP length");
+        require(start.length == uint(Battle.ChargeOP) + 1    );
+        require(first.length == uint(Battle.HashDecision) + 1);
         validateTransitionKeepBasics(start, first);
-        require(first[uint(Battle.HashDecision)].toUint() != 0, "Opponent must provide a hash for decision");
+        require(first[uint(Battle.HashDecision)].toUint() != 0);
     }
 
     function validateEvenToOdd(
@@ -182,20 +182,20 @@ library CMBTransition {
         RLPReader.RLPItem[] memory odd  = oddTurn.toRlpItem().toList();
 
         if(isFinal) {
-            require(odd.length == uint(Battle.SaltOP) + 1, "Invalid ending turn RLP length");
+            require(odd.length == uint(Battle.SaltOP) + 1);
         } else {
-            require(odd.length == uint(Battle.NextHashDecision) + 1, "Invalid ending turn RLP length");
-            require(odd[uint(Battle.NextHashDecision)].toUint() != 0, "Opponent must provide a hash for decision");
+            require(odd.length == uint(Battle.NextHashDecision) + 1);
+            require(odd[uint(Battle.NextHashDecision)].toUint() != 0);
         }
 
-        require(even[uint(Battle.CryptoMonPL)].toUint() == odd[uint(Battle.CryptoMonPL)].toUint()  , "Player Cryptomon must stay same");
-        require(even[uint(Battle.CryptoMonOP)].toUint() == odd[uint(Battle.CryptoMonOP)].toUint()  , "Opponent Cryptomon must stay same");
-        require(even[uint(Battle.HashDecision)].toUint()== odd[uint(Battle.HashDecision)].toUint() , "HashDecision must stay same");
-        require(even[uint(Battle.DecisionPL  )].toUint()== odd[uint(Battle.DecisionPL   )].toUint(), "Player Decision must stay same");
-        require(even[uint(Battle.SaltPL      )].toUint()== odd[uint(Battle.SaltPL      )].toUint() , "Player Salt must stay same");
+        require(even[uint(Battle.CryptoMonPL)].toUint() == odd[uint(Battle.CryptoMonPL)].toUint()  );
+        require(even[uint(Battle.CryptoMonOP)].toUint() == odd[uint(Battle.CryptoMonOP)].toUint()  );
+        require(even[uint(Battle.HashDecision)].toUint()== odd[uint(Battle.HashDecision)].toUint() );
+        require(even[uint(Battle.DecisionPL  )].toUint()== odd[uint(Battle.DecisionPL   )].toUint());
+        require(even[uint(Battle.SaltPL      )].toUint()== odd[uint(Battle.SaltPL      )].toUint() );
 
-        require(odd[uint(Battle.DecisionPL)].toUint() <= uint(BattleDamageCalculator.Moves.STATUS2), "Players decision invalid");
-        require(odd[uint(Battle.DecisionOP)].toUint() <= uint(BattleDamageCalculator.Moves.STATUS2), "Opponent decision invalid");
+        require(odd[uint(Battle.DecisionPL)].toUint() <= uint(BattleDamageCalculator.Moves.STATUS2));
+        require(odd[uint(Battle.DecisionOP)].toUint() <= uint(BattleDamageCalculator.Moves.STATUS2));
 
         require(bytes32(even[uint(Battle.HashDecision)].toUint()) ==
             keccak256(abi.encodePacked(odd[uint(Battle.DecisionOP)].toUint(), odd[uint(Battle.SaltOP)].toUint())),
@@ -231,15 +231,15 @@ library CMBTransition {
 
         state = state.calculateBattle();
 
-        require(state.player.hp      == odd[uint(Battle.HPPL )].toUint()        , "Player HP after battle is incorrect");
-        require(state.player.charges == odd[uint(Battle.ChargePL )].toUint()    , "Player charges after battle is incorrect");
-        require(state.player.status1 == odd[uint(Battle.Status1PL )].toBoolean(), "Player status1 after battle is incorrect");
-        require(state.player.status2 == odd[uint(Battle.Status2PL )].toBoolean(), "Player status2 after battle is incorrect");
+        require(state.player.hp      == odd[uint(Battle.HPPL )].toUint()        );
+        require(state.player.charges == odd[uint(Battle.ChargePL )].toUint()    );
+        require(state.player.status1 == odd[uint(Battle.Status1PL )].toBoolean());
+        require(state.player.status2 == odd[uint(Battle.Status2PL )].toBoolean());
 
-        require(state.opponent.hp      == odd[uint(Battle.HPOP )].toUint()        , "Player HP after battle is incorrect");
-        require(state.opponent.charges == odd[uint(Battle.ChargeOP )].toUint()    , "Player charges after battle is incorrect");
-        require(state.opponent.status1 == odd[uint(Battle.Status1OP )].toBoolean(), "Player status1 after battle is incorrect");
-        require(state.opponent.status2 == odd[uint(Battle.Status2OP )].toBoolean(), "Player status2 after battle is incorrect");
+        require(state.opponent.hp      == odd[uint(Battle.HPOP )].toUint()        );
+        require(state.opponent.charges == odd[uint(Battle.ChargeOP )].toUint()    );
+        require(state.opponent.status1 == odd[uint(Battle.Status1OP )].toBoolean());
+        require(state.opponent.status2 == odd[uint(Battle.Status2OP )].toBoolean());
     }
 
     function validateOddToEven(
@@ -255,38 +255,38 @@ library CMBTransition {
 
         bytes32 oddNewHashDec;
         if(isFirst) {
-            require(odd.length == uint(Battle.HashDecision) + 1, "Invalid odd turn RLP length");
+            require(odd.length == uint(Battle.HashDecision) + 1);
             oddNewHashDec = bytes32(odd[uint(Battle.HashDecision)].toUint());
         } else {
-            require(odd.length == uint(Battle.NextHashDecision) + 1, "Invalid odd turn RLP length");
+            require(odd.length == uint(Battle.NextHashDecision) + 1);
             oddNewHashDec = bytes32(odd[uint(Battle.NextHashDecision)].toUint());
         }
 
-        require(even.length == uint(Battle.SaltPL) + 1, "Invalid even turn RLP length");
+        require(even.length == uint(Battle.SaltPL) + 1);
 
         validateTransitionKeepBasics(odd, even);
 
-        require(oddNewHashDec == bytes32(even[uint(Battle.HashDecision)].toUint()) , "Hash decision must stay de same");
+        require(oddNewHashDec == bytes32(even[uint(Battle.HashDecision)].toUint()) );
 
         uint playerDecision = even[uint(Battle.DecisionPL)].toUint();
-        require(playerDecision <= uint(BattleDamageCalculator.Moves.STATUS2), "Players decision invalid");
+        require(playerDecision <= uint(BattleDamageCalculator.Moves.STATUS2));
 
         if(BattleDamageCalculator.needsCharge(BattleDamageCalculator.Moves(playerDecision))) {
-            require(even[uint(Battle.ChargePL)].toUint() > 0, "Player must have charge to make that move");
+            require(even[uint(Battle.ChargePL)].toUint() > 0);
         }
 
         Pokedex.Pokemon memory cryptoMonPL = getCryptoMon(rootChain, cryptomons, even[uint(Battle.CryptoMonPL)].toUint());
         Pokedex.PokemonData memory cryptoMonPLData = cryptomons.getPokemonData(cryptoMonPL.id);
 
         if(BattleDamageCalculator.usesFirstType(BattleDamageCalculator.Moves(playerDecision))) {
-            require(cryptoMonPLData.type1 != Pokedex.Type.Unknown, "Player attack cant be done with Unknown type");
+            require(cryptoMonPLData.type1 != Pokedex.Type.Unknown);
         }
 
         if(BattleDamageCalculator.usesSecondType(BattleDamageCalculator.Moves(playerDecision))) {
-            require(cryptoMonPLData.type2 != Pokedex.Type.Unknown, "Player attack cant be done with Unknown type");
+            require(cryptoMonPLData.type2 != Pokedex.Type.Unknown);
         }
 
-        require(even[uint(Battle.SaltPL)].toUint() != 0, "Player must provide a salt");
+        require(even[uint(Battle.SaltPL)].toUint() != 0);
     }
 
     function winner(bytes memory state, address player, address opponent) internal pure returns (address) {

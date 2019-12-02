@@ -29,10 +29,10 @@ library Adjudicators {
         address issuer
     )
     internal
-    withoutCurrentChallenge(channel)
-    whenState(channel, PlasmaCM.ChannelState.FUNDED)
-    matchId(channel, initialState)
     {
+        withoutCurrentChallenge(channel);
+        whenState(channel, PlasmaCM.ChannelState.FUNDED);
+        matchId(channel, initialState);
         Rules.validateStartState(initialState, channel.players, channel.initialArgumentsHash);
         createChallenge(channel, uint32(now + CHALLENGE_DURATION), initialState, issuer);
     }
@@ -56,10 +56,11 @@ library Adjudicators {
         bytes[] memory signatures
     )
     internal
-    withoutCurrentChallenge(channel)
-    whenState(channel, PlasmaCM.ChannelState.FUNDED)
-    matchId(channel, fromState)
     {
+        withoutCurrentChallenge(channel);
+        whenState(channel, PlasmaCM.ChannelState.FUNDED);
+        matchId(channel, fromState);
+
         if(signatures[0].length == 0 ) {
             Rules.validateStartState(fromState, channel.players, channel.initialArgumentsHash);
             toState.requireSignature(signatures[1], channel.publicKeys);
@@ -82,9 +83,9 @@ library Adjudicators {
         State.StateStruct memory nextState,
         bytes memory signature)
     internal
-    withActiveChallenge(channel)
-    whenState(channel, PlasmaCM.ChannelState.FUNDED)
     {
+        require(activeChallengePresent(channel));
+        whenState(channel, PlasmaCM.ChannelState.FUNDED);
         nextState.requireSignature(signature, channel.publicKeys);
         Rules.validateTransition(channel.forceMoveChallenge.state, nextState);
         cancelCurrentChallenge(channel);
@@ -105,9 +106,9 @@ library Adjudicators {
         address issuer
     )
     public
-    withActiveChallenge(channel)
-    whenState(channel, PlasmaCM.ChannelState.FUNDED)
     {
+        require(activeChallengePresent(channel));
+        whenState(channel, PlasmaCM.ChannelState.FUNDED);
         Rules.validateRefute(channel.forceMoveChallenge.state, refutingState, channel.publicKeys, signature);
         //Create an expired challenge that acts as the final state
         createChallenge(channel, uint32(now), refutingState, issuer);
@@ -131,12 +132,13 @@ library Adjudicators {
         bytes[] memory signatures
     )
     internal
-    withoutActiveChallenge(channel)
-    whenState(channel, PlasmaCM.ChannelState.FUNDED)
-    matchId(channel, penultimateState)
     {
+
+        require(!activeChallengePresent(channel));
+        whenState(channel, PlasmaCM.ChannelState.FUNDED);
+        matchId(channel, penultimateState);
         Rules.validateSignedTransition(penultimateState, ultimateState, channel.publicKeys, signatures);
-        require(ultimateState.isOver(), "Ultimate State must be a final state");
+        require(ultimateState.isOver());
 
         //Create an expired challenge that acts as the final state
         createChallenge(channel, uint32(now), ultimateState, ultimateState.winner());
@@ -175,33 +177,19 @@ library Adjudicators {
     }
 
     // Modifiers
-    modifier withCurrentChallenge(PlasmaCM.FMChannel storage channel) {
-        require(currentChallengePresent(channel), "Current challenge must be present");
-        _;
+    function withCurrentChallenge(PlasmaCM.FMChannel storage channel) private {
+        require(currentChallengePresent(channel));
     }
 
-    modifier withoutCurrentChallenge(PlasmaCM.FMChannel storage channel) {
-        require(!currentChallengePresent(channel), "current challenge must not be present");
-        _;
+    function withoutCurrentChallenge(PlasmaCM.FMChannel storage channel) private {
+        require(!currentChallengePresent(channel));
     }
 
-    modifier withActiveChallenge(PlasmaCM.FMChannel storage channel) {
-        require(activeChallengePresent(channel), "active challenge must be present");
-        _;
+    function whenState(PlasmaCM.FMChannel storage channel, PlasmaCM.ChannelState state) private {
+        require(channel.state == state);
     }
 
-    modifier withoutActiveChallenge(PlasmaCM.FMChannel storage channel) {
-        require(!activeChallengePresent(channel), "active challenge must not be present");
-        _;
-    }
-
-    modifier whenState(PlasmaCM.FMChannel storage channel, PlasmaCM.ChannelState state) {
-        require(channel.state == state, "Incorrect channel state");
-        _;
-    }
-
-    modifier matchId(PlasmaCM.FMChannel storage channel, State.StateStruct memory state) {
-        require(channel.channelId == state.channelId, "Channel's channelId must match the state's channelId");
-        _;
+    function matchId(PlasmaCM.FMChannel storage channel, State.StateStruct memory state) private {
+        require(channel.channelId == state.channelId);
     }
 }

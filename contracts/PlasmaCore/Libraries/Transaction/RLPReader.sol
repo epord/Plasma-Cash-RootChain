@@ -94,7 +94,7 @@ library RLPReader {
 
     // any non-zero byte is considered true
     function toBoolean(RLPItem memory item) internal pure returns (bool) {
-        require(item.len == 1, "RLP Boolean must be 1 byte");
+        require(item.len == 1);
         uint result;
         uint memPtr = item.memPtr;
         assembly {
@@ -106,13 +106,13 @@ library RLPReader {
 
     function toAddress(RLPItem memory item) internal pure returns (address) {
         // 1 byte for the length prefix
-        require(item.len == 21, "RLP address must be 21 bytes");
+        require(item.len == 21);
 
         return address(toUint(item));
     }
 
     function toUint(RLPItem memory item) internal pure returns (uint) {
-        require(item.len > 0 && item.len <= 33, "RLP Uint must be between 1 and 33 bytes");
+        require(item.len > 0 && item.len <= 33);
 
         uint offset = _payloadOffset(item.memPtr);
         uint len = item.len - offset;
@@ -134,7 +134,7 @@ library RLPReader {
     // enforces 32 byte length
     function toUintStrict(RLPItem memory item) internal pure returns (uint) {
         // one byte prefix
-        require(item.len == 33, "RLP Uint must be 33 bytes");
+        require(item.len == 33);
 
         uint result;
         uint memPtr = item.memPtr + 1;
@@ -146,7 +146,7 @@ library RLPReader {
     }
 
     function toBytes(RLPItem memory item) internal pure returns (bytes memory) {
-        require(item.len > 0, "RLP bytes must be more than 0");
+        require(item.len > 0);
 
         uint offset = _payloadOffset(item.memPtr);
         uint len = item.len - offset; // data length

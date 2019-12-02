@@ -151,10 +151,6 @@ contract PlasmaCM {
         rootChain = _rootChain;
     }
 
-    function () external payable {
-        revert("Please send funds using the FundChannel");
-    }
-
     ///////////////////////////////////////////////////////////////////////////////////
     ////            Channel Creation and Closure
     //////////////////////////////////////////////////////////////////////////////////
@@ -178,8 +174,9 @@ contract PlasmaCM {
         uint stake,
         bytes calldata initialGameAttributes,
         bytes calldata exitData
-    ) external payable Payment(stake) {
-
+    ) external payable {
+        require(stake >= MINIMAL_BET);
+        require(stake == msg.value);
         channelCounter.increment();
 
         address[2] memory addresses;
@@ -236,14 +233,14 @@ contract PlasmaCM {
         address key,
         bytes calldata initialGameAttributes,
         bytes calldata exitData
-    ) external payable channelExists(channelId) {
-
+    ) external payable {
+        channelExists(channelId);
         FMChannel storage channel = channels[channelId];
 
-        require(channel.state == ChannelState.INITIATED, "Channel is already funded");
-        require(channel.players[1] == msg.sender, "Sender is not participant of this channel");
-        require(channel.stake == msg.value, "Payment must be equal to channel stake");
-        require(channel.initialArgumentsHash == keccak256(initialGameAttributes), "Initial state does not match");
+        require(channel.state == ChannelState.INITIATED);
+        require(channel.players[1] == msg.sender);
+        require(channel.stake == msg.value);
+        require(channel.initialArgumentsHash == keccak256(initialGameAttributes));
         channel.state = ChannelState.FUNDED;
         channel.publicKeys[1] = key;
         channel.fundedTimestamp = block.timestamp;
@@ -262,11 +259,12 @@ contract PlasmaCM {
       * @notice Emits ChannelConcluded event
       * @param channelId   Unique identifier of the channel
       */
-    function closeUnfundedChannel(uint channelId) external channelExists(channelId) {
+    function closeUnfundedChannel(uint channelId) external {
+        channelExists(channelId);
         FMChannel storage channel = channels[channelId];
 
-        require(channel.state == ChannelState.INITIATED, "Channel is already funded");
-        require(channel.players[0] == msg.sender, "Sender is not creator of this channel");
+        require(channel.state == ChannelState.INITIATED);
+        require(channel.players[0] == msg.sender);
 
         channel.state = ChannelState.CLOSED;
 
@@ -290,7 +288,9 @@ contract PlasmaCM {
         State.StateStruct memory prevState,
         State.StateStruct memory lastState,
         bytes[] memory signatures
-    ) public channelExists(channelId) isFunded(channelId) {
+    ) public {
+        channelExists(channelId);
+        isFunded(channelId);
         FMChannel storage channel = channels[channelId];
 
         if(!channel.expiredChallengePresent()) {
@@ -298,7 +298,7 @@ contract PlasmaCM {
         }
 
         //should never fail
-        require(channel.expiredChallengePresent(), "Winner not correctly decided");
+        require(channel.expiredChallengePresent());
 
         channel.state = ChannelState.CLOSED;
         funds[channel.forceMoveChallenge.winner] += channel.stake * 2;
@@ -309,7 +309,7 @@ contract PlasmaCM {
     * @dev Allows an address to extract the funds locked in this contract
     */
     function withdraw() public {
-        require(funds[msg.sender] > 0, "Sender has no funds");
+        require(funds[msg.sender] > 0);
         uint value = funds[msg.sender];
         funds[msg.sender] = 0;
         msg.sender.transfer(value);
@@ -329,9 +329,9 @@ contract PlasmaCM {
     function forceFirstMove(
         uint channelId,
         State.StateStruct memory initialState
-    ) public channelExists(channelId) {
-
-        require(msg.sender == channels[channelId].players[0],"Only player can make this challenge");
+    ) public {
+        channelExists(channelId);
+        require(msg.sender == channels[channelId].players[0]);
         channels[channelId].forceFirstMove(initialState, msg.sender);
         emit ForceMoveRequested(channelId, initialState);
     }
@@ -352,8 +352,9 @@ contract PlasmaCM {
         State.StateStruct memory fromState,
         State.StateStruct memory toState,
         bytes[] memory signatures
-    ) public channelExists(channelId) {
-        require(msg.sender == toState.mover(),"Only non-mover can make this challenge");
+    ) public {
+        channelExists(channelId);
+        require(msg.sender == toState.mover());
         channels[channelId].forceMove(fromState, toState, msg.sender, signatures);
         emit ForceMoveRequested(channelId, toState);
     }
@@ -370,8 +371,9 @@ contract PlasmaCM {
         uint channelId,
         State.StateStruct memory nextState,
         bytes memory signature
-    ) public channelExists(channelId) {
-        require(msg.sender == nextState.mover(),"Only mover can answer this challenge");
+    ) public {
+        channelExists(channelId);
+        require(msg.sender == nextState.mover());
         channels[channelId].respondWithMove(nextState, signature);
         emit ForceMoveResponded(channelId, nextState, signature);
     }
@@ -389,14 +391,15 @@ contract PlasmaCM {
         uint channelId,
         State.StateStruct memory refutingState,
         bytes memory signature
-    ) public channelExists(channelId) {
+    ) public {
+        channelExists(channelId);
         FMChannel storage channel = channels[channelId];
         address responder = channel.forceMoveChallenge.state.mover() == channel.players[0] ? channel.players[1] : channel.players[0];
-        require(msg.sender == responder, "Only challenge responder can refute");
+        require(msg.sender == responder);
         channel.refute(refutingState, signature, msg.sender);
 
         //should never fail
-        require(channel.expiredChallengePresent(), "Winner not correctly decided");
+        require(channel.expiredChallengePresent());
 
         channel.state = ChannelState.CLOSED;
         funds[channel.forceMoveChallenge.winner] += channel.stake * 2;
@@ -426,13 +429,15 @@ contract PlasmaCM {
         bytes calldata proof,
         bytes calldata signature,
         uint256 blockNumber)
-    external channelExists(channelId) isFunded(channelId) {
+    external {
+        channelExists(channelId);
+        isFunded(channelId);
         RootChain.Exit memory exit = exits[channelId][index];
         exit.checkAfter(rootChain, txBytes, proof, signature, blockNumber);
 
         ( ,uint createdAt) = rootChain.getBlock(blockNumber);
         FMChannel storage channel = channels[channelId];
-        require(createdAt < channel.fundedTimestamp, "Challenge After block must be previous to channel creation");
+        require(createdAt < channel.fundedTimestamp);
         channel.state = ChannelState.CHALLENGED;
         funds[msg.sender] += channel.stake;
 
@@ -463,7 +468,9 @@ contract PlasmaCM {
         bytes calldata proof,
         bytes calldata signature,
         uint256 blockNumber)
-    external channelExists(channelId) isFunded(channelId) {
+    external {
+        channelExists(channelId);
+        isFunded(channelId);
         RootChain.Exit memory exit = exits[channelId][index];
         exit.checkBetween(rootChain, txBytes, proof, signature, blockNumber);
 
@@ -496,12 +503,15 @@ contract PlasmaCM {
         bytes calldata txBytes,
         bytes calldata proof,
         uint256 blockNumber
-    ) external payable channelExists(channelId) isChallengeable(channelId) Bonded {
-
-        require(block.timestamp <= channels[channelId].fundedTimestamp + CHALLENGE_PERIOD, "Challenge window is over");
+    ) external payable {
+        channelExists(channelId);
+        require(channels[channelId].state  == ChannelState.SUSPENDED
+        || channels[channelId].state  == ChannelState.FUNDED);
+        require(CHALLENGE_BOND == msg.value);
+        require(block.timestamp <= channels[channelId].fundedTimestamp + CHALLENGE_PERIOD);
         exits[channelId][index].checkBefore(rootChain, txBytes, proof, blockNumber);
         bytes32 txHash = txBytes.getHash();
-        require(!challenges[channelId].contains(txHash), "Transaction used for challenge already");
+        require(!challenges[channelId].contains(txHash));
 
         // Need to save the exiting transaction's owner, to verify
         // that the response is valid
@@ -542,11 +552,13 @@ contract PlasmaCM {
         bytes calldata respondingTransaction,
         bytes calldata proof,
         bytes calldata signature
-    ) external channelExists(channelId) isSuspended(channelId) {
+    ) external {
+        channelExists(channelId);
 
+        require(channels[channelId].state  == ChannelState.SUSPENDED);
         // Check that the transaction being challenged exists
         ChallengeLib.Challenge[] storage cChallenges = challenges[channelId];
-        require(cChallenges.contains(challengingTxHash), "Responding to non existing challenge");
+        require(cChallenges.contains(challengingTxHash));
         // Get index of challenge in the challenges array
         uint256 cIndex = uint256(cChallenges.indexOf(challengingTxHash));
         uint _index = index;
@@ -587,9 +599,12 @@ contract PlasmaCM {
      */
     function closeChallengedChannel(
         uint channelId
-    ) external channelExists(channelId) isSuspended(channelId) {
+    ) external {
+        channelExists(channelId);
+        require(channels[channelId].state  == ChannelState.SUSPENDED);
+
         FMChannel storage channel = channels[channelId];
-        require(block.timestamp >= channel.fundedTimestamp + CHALLENGE_RESPOND_PERIOD, "Challenge respond window isnt over");
+        require(block.timestamp >= channel.fundedTimestamp + CHALLENGE_RESPOND_PERIOD);
 
         ChallengeLib.Challenge[] memory channelChallenges = challenges[channelId];
 
@@ -645,36 +660,12 @@ contract PlasmaCM {
     ////            Modifiers
     //////////////////////////////////////////////////////////////////////////////////
 
-    modifier Payment(uint stake) {
-        require(stake >= MINIMAL_BET,"Stake must be greater than minimal bet");
-        require(stake == msg.value, "Invalid Payment amount");
-        _;
+    function channelExists(uint channelId) private {
+        require(channels[channelId].channelId > 0);
     }
 
-    modifier Bonded() {
-        require(CHALLENGE_BOND == msg.value, "Challenge Bond must be provided");
-        _;
-    }
-
-    modifier channelExists(uint channelId) {
-        require(channels[channelId].channelId > 0, "Channel has not yet been created");
-        _;
-    }
-
-    modifier isFunded(uint channelId) {
-        require(channels[channelId].state  == ChannelState.FUNDED, "Channel must be funded (maybe there is a challenge)");
-        _;
-    }
-
-    modifier isSuspended(uint channelId) {
-        require(channels[channelId].state  == ChannelState.SUSPENDED, "Channel must be suspended");
-        _;
-    }
-
-    modifier isChallengeable(uint channelId) {
-        require(channels[channelId].state  == ChannelState.SUSPENDED
-        || channels[channelId].state  == ChannelState.FUNDED, "Channel must be funded or suspended");
-        _;
+    function isFunded(uint channelId) private {
+        require(channels[channelId].state  == ChannelState.FUNDED);
     }
 
 }
