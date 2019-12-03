@@ -224,8 +224,8 @@ library BattleDamageCalculator {
     }
 
     function canStatus(BattleState memory state, uint8 random) private pure returns (bool) {
-        if(state.player.status1 && state.opponent.data.type1 != Pokedex.Type.Ice) return false;
-        if(state.player.status2 && state.opponent.data.type2 != Pokedex.Type.Ice) return false;
+        if(state.player.status1 && state.opponent.data.type1 == Pokedex.Type.Ice) return false;
+        if(state.player.status2 && state.opponent.data.type2 == Pokedex.Type.Ice) return false;
         return random < STATUS_HIT_CHANCE;
     }
 
